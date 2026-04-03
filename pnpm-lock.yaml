@@ -20,6 +20,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.52.0
+        version: 0.52.0
       '@squadswarm/ai':
         specifier: workspace:*
         version: link:../../packages/ai

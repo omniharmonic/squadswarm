@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
     "@squadswarm/ai": "workspace:*",
     "@squadswarm/db": "workspace:*",
     "@squadswarm/shared": "workspace:*",

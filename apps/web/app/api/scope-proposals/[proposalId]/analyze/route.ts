@@ -4,8 +4,31 @@ export const maxDuration = 120;
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, scopeProposals, scopeDocuments } from '@squadswarm/db';
-import { analyzeScopeStreaming } from '@squadswarm/ai';
 import { getSession } from '@/lib/auth';
+import Anthropic from '@anthropic-ai/sdk';
+import { ROLE_TAXONOMY, FORMAT_TAXONOMY } from '@squadswarm/shared';
+
+function buildSystemPrompt() {
+  return `You are the SquadSwarm Scope Analyst. Analyze scope documentation and produce structured work plans.
+
+You decompose work into: Scope -> Workstreams -> Deliverables.
+Each Deliverable has: title, description, format, acceptance criteria, estimated effort hours, required skills, suggested role.
+
+Role Taxonomy: ${ROLE_TAXONOMY.join(', ')}
+Format Taxonomy: ${FORMAT_TAXONOMY.join(', ')}
+
+When analyzing, first assess documentation sufficiency (score dimensions 0-100). If all >= 60, generate a Work Plan. If not, ask specific questions.
+
+ALWAYS respond with valid JSON. Choose one of:
+
+If insufficient:
+{"type":"sufficiency_assessment","dimensions":[{"dimension":"Outcome Clarity","score":75,"feedback":"...","questions":["..."]}],"overallScore":65,"isReady":false}
+
+If sufficient:
+{"type":"work_plan","summary":"...","workstreams":[{"title":"...","description":"...","orderIndex":0,"dependencies":[],"deliverables":[{"title":"...","description":"...","format":"codebase","acceptanceCriteria":[{"description":"...","measurableCondition":"..."}],"estimatedEffortHours":8,"requiredSkills":["..."],"suggestedRole":"..."}]}],"estimatedTotalHours":40,"suggestedTimelineDays":14,"roles":[{"title":"...","description":"...","isRequired":true}]}
+
+Respond ONLY with the JSON object.`;
+}
 
 export async function POST(
   req: NextRequest,
@@ -16,7 +39,6 @@ export async function POST(
 
   const { proposalId } = await params;
 
-  // Fetch proposal
   const [proposal] = await db
     .select()
     .from(scopeProposals)
@@ -28,95 +50,107 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Fetch documents with extracted text
   const documents = await db
     .select()
     .from(scopeDocuments)
     .where(eq(scopeDocuments.scopeProposalId, proposalId));
 
-  // Parse any conversation history from the request body
   const body = await req.json().catch(() => ({}));
 
-  // Update status to analyzing
+  // Update status
   await db
     .update(scopeProposals)
     .set({ status: 'analyzing', updatedAt: new Date() })
     .where(eq(scopeProposals.id, proposalId));
 
-  // Stream the AI analysis
-  const stream = await analyzeScopeStreaming({
-    narrative: proposal.narrative || '',
-    documents: documents.map((d) => ({
-      name: d.fileName,
-      content: d.extractedText || `[File: ${d.fileName} (${d.fileType})]`,
-    })),
-    budgetMin: proposal.budgetMin,
-    budgetMax: proposal.budgetMax,
-    timelineDays: proposal.timelineDays,
-    conversationHistory: body.messages,
-  });
+  // Build the user message
+  const userMessage = `## Scope Proposal
 
-  // Create a TransformStream to capture the full response for storage
-  let fullText = '';
+### Title
+${proposal.title}
 
-  const transformStream = new TransformStream({
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-    },
-  });
+### Narrative
+${proposal.narrative || '(No narrative provided)'}
 
-  // Pipe the Anthropic stream through, collecting text as we go
+### Attached Documents
+${documents.length > 0 ? documents.map((d) => `#### ${d.fileName}\n${d.extractedText || `[File: ${d.fileName}]`}`).join('\n\n') : '(No documents)'}
+
+### Constraints
+Budget: ${proposal.budgetMin && proposal.budgetMax ? `$${proposal.budgetMin} - $${proposal.budgetMax}` : 'Not specified'}
+Timeline: ${proposal.timelineDays ? `${proposal.timelineDays} days` : 'Not specified'}
+
+Assess sufficiency and generate a work plan if ready.`;
+
+  const messages: Anthropic.MessageParam[] = body.messages?.length
+    ? body.messages
+    : [{ role: 'user' as const, content: userMessage }];
+
+  // Use non-streaming first to avoid SSE complexity issues, then send as SSE
+  const encoder = new TextEncoder();
   const readableStream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const event of stream) {
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            fullText += event.delta.text;
-            const data = JSON.stringify({
-              type: 'text_delta',
-              text: event.delta.text,
-            });
-            controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+        const client = new Anthropic();
+        const stream = client.messages.stream({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 4096,
+          system: buildSystemPrompt(),
+          messages,
+        });
+
+        let fullText = '';
+
+        stream.on('text', (text) => {
+          fullText += text;
+          const data = JSON.stringify({ type: 'text_delta', text });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        });
+
+        stream.on('error', (error) => {
+          console.error('Stream error:', error);
+          const data = JSON.stringify({ type: 'error', message: String(error) });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          controller.close();
+        });
+
+        stream.on('end', async () => {
+          // Send done event
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: 'done', text: fullText })}\n\n`),
+          );
+          controller.close();
+
+          // Store result
+          try {
+            const parsed = JSON.parse(fullText);
+            const isReady = parsed.type === 'work_plan' || parsed.isReady === true;
+            await db
+              .update(scopeProposals)
+              .set({
+                aiAnalysis: parsed,
+                status: isReady ? 'ready' : 'needs_info',
+                updatedAt: new Date(),
+              })
+              .where(eq(scopeProposals.id, proposalId));
+          } catch {
+            await db
+              .update(scopeProposals)
+              .set({
+                aiAnalysis: { raw: fullText },
+                status: 'needs_info',
+                updatedAt: new Date(),
+              })
+              .where(eq(scopeProposals.id, proposalId));
           }
-        }
-
-        // Send the complete event
-        controller.enqueue(
-          new TextEncoder().encode(
-            `data: ${JSON.stringify({ type: 'done', text: fullText })}\n\n`,
-          ),
-        );
-        controller.close();
-
-        // Store the analysis result
-        try {
-          const parsed = JSON.parse(fullText);
-          const isReady = parsed.type === 'work_plan' || parsed.isReady === true;
-          await db
-            .update(scopeProposals)
-            .set({
-              aiAnalysis: parsed,
-              status: isReady ? 'ready' : 'needs_info',
-              updatedAt: new Date(),
-            })
-            .where(eq(scopeProposals.id, proposalId));
-        } catch {
-          // If parsing fails, store raw text
-          await db
-            .update(scopeProposals)
-            .set({
-              aiAnalysis: { raw: fullText },
-              status: 'needs_info',
-              updatedAt: new Date(),
-            })
-            .where(eq(scopeProposals.id, proposalId));
-        }
+        });
       } catch (error) {
-        console.error('Analysis stream error:', error);
-        controller.error(error);
+        console.error('Analysis init error:', error);
+        const data = JSON.stringify({
+          type: 'error',
+          message: error instanceof Error ? error.message : 'Analysis failed',
+        });
+        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        controller.close();
       }
     },
   });

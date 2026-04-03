@@ -133,7 +133,7 @@ Assess this proposal's documentation sufficiency. If sufficient (all dimensions 
     : [{ role: 'user', content: userMessage }];
 
   const stream = client.messages.stream({
-    model: 'claude-sonnet-4-5-20250514',
+    model: 'claude-3-haiku-20240307',
     max_tokens: 8192,
     system: buildSystemPrompt(),
     messages,
@@ -149,7 +149,7 @@ export async function scoreDocumentation(input: {
   const client = getClient();
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250514',
+    model: 'claude-3-haiku-20240307',
     max_tokens: 2048,
     system: `You are a documentation sufficiency scorer. Score each dimension 0-100 and return JSON.
 
