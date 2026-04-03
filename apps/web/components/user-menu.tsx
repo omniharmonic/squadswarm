@@ -1,0 +1,67 @@
+'use client';
+
+import Link from 'next/link';
+import { useState, useRef, useEffect } from 'react';
+
+export function UserMenu() {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-bg-secondary transition-colors"
+      >
+        <div className="w-8 h-8 rounded-full bg-accent-agent/20 text-accent-agent flex items-center justify-center text-xs font-bold">
+          U
+        </div>
+        <svg
+          className={`w-4 h-4 text-text-secondary transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-border rounded-xl shadow-lg py-1 z-50">
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2 text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+          >
+            Profile
+          </Link>
+          <Link
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2 text-sm text-text-primary hover:bg-bg-secondary transition-colors"
+          >
+            Settings
+          </Link>
+          <div className="border-t border-border my-1" />
+          <Link
+            href="/api/auth/signout"
+            className="block px-4 py-2 text-sm text-accent-squad hover:bg-bg-secondary transition-colors"
+          >
+            Sign Out
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}

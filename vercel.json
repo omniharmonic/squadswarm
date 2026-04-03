@@ -1,0 +1,18 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "turbo build --filter=web",
+  "functions": {
+    "app/api/mcp/**": {
+      "maxDuration": 300
+    },
+    "app/api/scope-proposals/*/analyze/**": {
+      "maxDuration": 120
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/bid-deadline-check",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

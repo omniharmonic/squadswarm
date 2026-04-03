@@ -1,0 +1,34 @@
+{
+  "name": "web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@squadswarm/shared": "workspace:*",
+    "@squadswarm/ai": "workspace:*",
+    "@squadswarm/db": "workspace:*",
+    "@squadswarm/ui": "workspace:*",
+    "drizzle-orm": "^0.44.0",
+    "jose": "^6.0.0",
+    "resend": "^4.5.0",
+    "sonner": "^2.0.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.8.0",
+    "tailwindcss": "^4.1.0",
+    "@tailwindcss/postcss": "^4.1.0"
+  }
+}
