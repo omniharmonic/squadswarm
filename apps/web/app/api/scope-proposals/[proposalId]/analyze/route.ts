@@ -114,9 +114,25 @@ Assess sufficiency and generate a work plan if ready.`;
         });
 
         stream.on('end', async () => {
-          // Send done event
+          // Parse the result to determine status
+          let resultType: string | undefined;
+          let isReady = false;
+          try {
+            const parsed = JSON.parse(fullText);
+            resultType = parsed.type;
+            isReady = parsed.type === 'work_plan' || parsed.isReady === true;
+          } catch {
+            // not valid JSON
+          }
+
+          // Send done event with parsed status info
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: 'done', text: fullText })}\n\n`),
+            encoder.encode(`data: ${JSON.stringify({
+              type: 'done',
+              text: fullText,
+              resultType,
+              status: isReady ? 'ready' : 'needs_info',
+            })}\n\n`),
           );
           controller.close();
 

@@ -8,8 +8,8 @@ export async function sendMagicLink(email: string, token: string) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const magicLinkUrl = `${baseUrl}/verify?token=${token}`;
 
-  await getResend().emails.send({
-    from: 'SquadSwarm <noreply@squadswarm.com>',
+  const { data, error } = await getResend().emails.send({
+    from: 'SquadSwarm <noreply@cosense.us>',
     to: email,
     subject: 'Sign in to SquadSwarm',
     html: `
@@ -29,4 +29,11 @@ export async function sendMagicLink(email: string, token: string) {
       </div>
     `,
   });
+
+  if (error) {
+    console.error('Resend error:', error);
+    throw new Error(`Failed to send email: ${error.message}`);
+  }
+
+  console.log('Email sent:', data?.id);
 }

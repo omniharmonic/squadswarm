@@ -307,7 +307,7 @@ export default async function ScopeDetailPage({
           Submit a bid to show your interest and proposed approach.
         </p>
         <Link
-          href={`/scopes/${scope.id}/bid`}
+          href={`/bids/new?scopeId=${scope.id}`}
           className="inline-block py-2.5 px-6 bg-accent-squad text-white rounded-lg text-sm font-medium
                      hover:opacity-90 transition-opacity"
         >
