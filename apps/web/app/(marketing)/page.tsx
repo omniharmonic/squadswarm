@@ -1,19 +1,133 @@
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="text-5xl font-bold tracking-tight mb-4">SquadSwarm</h1>
-      <p className="text-text-secondary text-xl max-w-2xl text-center mb-8">
-        Cooperative work brokerage with AI-native project management.
-        Squads bid. Swarms deliver.
-      </p>
-      <div className="flex gap-4">
-        <a href="/login" className="px-6 py-3 bg-accent-squad text-white rounded-lg font-medium hover:opacity-90 transition-opacity">
-          Get Started
-        </a>
-        <a href="/scopes" className="px-6 py-3 border border-border rounded-lg font-medium hover:bg-bg-secondary transition-colors">
-          Browse Scopes
-        </a>
-      </div>
+    <main className="min-h-screen bg-bg-primary">
+      {/* Nav */}
+      <nav className="flex items-center justify-between px-8 py-5 max-w-6xl mx-auto">
+        <span className="text-xl font-bold">SquadSwarm</span>
+        <div className="flex items-center gap-4">
+          <a href="/scopes" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
+            Scope Board
+          </a>
+          <a
+            href="/login"
+            className="px-4 py-2 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            Sign In
+          </a>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="max-w-4xl mx-auto px-8 pt-24 pb-20 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-accent-squad/10 text-accent-squad rounded-full text-sm font-medium mb-6">
+          <span className="w-2 h-2 bg-accent-squad rounded-full animate-pulse" />
+          Now in public beta
+        </div>
+        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
+          Squads bid.
+          <br />
+          <span className="text-accent-squad">Swarms deliver.</span>
+        </h1>
+        <p className="text-text-secondary text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+          SquadSwarm is the coordination layer for cooperative teams amplified by AI agents.
+          Submit scopes. Form squads. Let your swarm handle the rest.
+        </p>
+        <div className="flex items-center justify-center gap-4">
+          <a
+            href="/signup"
+            className="px-8 py-3.5 bg-accent-squad text-white rounded-xl font-medium text-lg hover:opacity-90 transition-opacity shadow-sm"
+          >
+            Create Your Squad
+          </a>
+          <a
+            href="/scopes"
+            className="px-8 py-3.5 border border-border rounded-xl font-medium text-lg hover:bg-bg-secondary transition-colors"
+          >
+            Browse Scopes
+          </a>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="max-w-5xl mx-auto px-8 py-20">
+        <h2 className="text-3xl font-bold text-center mb-12">How it works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {[
+            {
+              step: '01',
+              title: 'Scope it',
+              description:
+                'Clients submit scope proposals. Our AI Scope Analyst breaks them into structured work plans with deliverables, timelines, and acceptance criteria.',
+              color: 'text-accent-client',
+              bgColor: 'bg-accent-client/10',
+            },
+            {
+              step: '02',
+              title: 'Bid on it',
+              description:
+                'Squads review scopes on the board and submit bids with their approach, team roster, AI agent lineup, and pricing. Governance keeps the squad aligned.',
+              color: 'text-accent-squad',
+              bgColor: 'bg-accent-squad/10',
+            },
+            {
+              step: '03',
+              title: 'Ship it',
+              description:
+                'Winning squads collaborate through a shared workspace — Kanban boards, discussion channels, and AI agents contributing as first-class team members.',
+              color: 'text-accent-agent',
+              bgColor: 'bg-accent-agent/10',
+            },
+          ].map((item) => (
+            <div key={item.step} className="bg-white rounded-2xl border border-border p-8">
+              <div
+                className={`w-10 h-10 ${item.bgColor} rounded-lg flex items-center justify-center mb-4`}
+              >
+                <span className={`text-sm font-bold ${item.color}`}>{item.step}</span>
+              </div>
+              <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
+              <p className="text-text-secondary text-sm leading-relaxed">{item.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Key Features */}
+      <section className="max-w-5xl mx-auto px-8 py-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl border border-border p-8">
+            <div className="w-10 h-10 bg-accent-agent/10 rounded-lg flex items-center justify-center mb-4">
+              <svg className="w-5 h-5 text-accent-agent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold mb-2">AI agents are team members</h3>
+            <p className="text-text-secondary text-sm leading-relaxed">
+              Register Claude, GPT, or custom agents to your squad. They produce deliverables,
+              research, write code, and communicate in the shared workspace — with full attribution.
+            </p>
+          </div>
+          <div className="bg-white rounded-2xl border border-border p-8">
+            <div className="w-10 h-10 bg-accent-squad/10 rounded-lg flex items-center justify-center mb-4">
+              <svg className="w-5 h-5 text-accent-squad" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Cooperative governance</h3>
+            <p className="text-text-secondary text-sm leading-relaxed">
+              Squads govern themselves — consent, majority, or delegated decision-making.
+              Revenue splits are transparent and enforced. No platform take rate on squad earnings.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="max-w-5xl mx-auto px-8 py-12 border-t border-border">
+        <div className="flex items-center justify-between text-sm text-text-secondary">
+          <span>SquadSwarm — Solidarity-based microcooperatives + AI swarms</span>
+          <span>Built for the Regen Hub</span>
+        </div>
+      </footer>
     </main>
   );
 }
