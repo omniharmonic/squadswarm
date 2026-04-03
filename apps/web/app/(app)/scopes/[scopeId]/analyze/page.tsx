@@ -66,16 +66,42 @@ type AnalysisResult = SufficiencyAssessment | WorkPlan;
 
 /* ── Helper to try parsing JSON from AI content ── */
 
-function tryParseAnalysis(content: string): AnalysisResult | null {
+function extractAnalysisResults(content: string): AnalysisResult[] {
+  // Try direct parse first
   try {
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(content.trim());
     if (parsed.type === 'sufficiency_assessment' || parsed.type === 'work_plan') {
-      return parsed as AnalysisResult;
+      return [parsed as AnalysisResult];
     }
   } catch {
-    // not valid JSON
+    // May contain multiple JSON objects or extra text
   }
-  return null;
+
+  // Extract all top-level JSON objects using brace matching
+  const results: AnalysisResult[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (content[i] === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        try {
+          const parsed = JSON.parse(content.slice(start, i + 1));
+          if (parsed.type === 'sufficiency_assessment' || parsed.type === 'work_plan') {
+            results.push(parsed as AnalysisResult);
+          }
+        } catch {
+          // skip malformed segment
+        }
+        start = -1;
+      }
+    }
+  }
+
+  return results;
 }
 
 /* ── Score bar component ── */
@@ -257,22 +283,24 @@ function WorkPlanView({ data }: { data: WorkPlan }) {
 /* ── Formatted analysis message ── */
 
 function AnalystMessage({ content }: { content: string }) {
-  const parsed = tryParseAnalysis(content);
+  const results = extractAnalysisResults(content);
 
-  if (!parsed) {
-    // Not JSON — render as plain text
+  if (results.length === 0) {
+    // No structured JSON found — render as plain text
     return <span className="whitespace-pre-wrap">{content}</span>;
   }
 
-  if (parsed.type === 'sufficiency_assessment') {
-    return <SufficiencyAssessmentView data={parsed} />;
-  }
-
-  if (parsed.type === 'work_plan') {
-    return <WorkPlanView data={parsed} />;
-  }
-
-  return <span className="whitespace-pre-wrap">{content}</span>;
+  return (
+    <div className="space-y-6">
+      {results.map((result, i) =>
+        result.type === 'sufficiency_assessment' ? (
+          <SufficiencyAssessmentView key={i} data={result} />
+        ) : result.type === 'work_plan' ? (
+          <WorkPlanView key={i} data={result} />
+        ) : null,
+      )}
+    </div>
+  );
 }
 
 /* ── Main page ── */
@@ -340,12 +368,13 @@ export default function AIAnalysisPage() {
                 ]);
                 setStreamingText('');
 
-                // Determine status from the content
-                const parsed = tryParseAnalysis(accumulated);
-                if (parsed?.type === 'work_plan') {
+                // Determine status from the last result
+                const results = extractAnalysisResults(accumulated);
+                const last = results[results.length - 1];
+                if (last?.type === 'work_plan') {
                   setStatus('ready');
-                } else if (parsed?.type === 'sufficiency_assessment') {
-                  setStatus(parsed.isReady ? 'ready' : 'questions');
+                } else if (last?.type === 'sufficiency_assessment') {
+                  setStatus(last.isReady ? 'ready' : 'questions');
                 } else {
                   setStatus('questions');
                 }
@@ -416,7 +445,8 @@ export default function AIAnalysisPage() {
 
   // Check if the latest analyst message is a work_plan (to show Publish button)
   const lastAnalystMsg = [...messages].reverse().find((m) => m.role === 'analyst');
-  const lastParsed = lastAnalystMsg ? tryParseAnalysis(lastAnalystMsg.content) : null;
+  const lastResults = lastAnalystMsg ? extractAnalysisResults(lastAnalystMsg.content) : [];
+  const lastParsed = lastResults[lastResults.length - 1];
   const showPublish = status === 'ready' && lastParsed?.type === 'work_plan';
 
   return (
