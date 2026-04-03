@@ -19,15 +19,17 @@ Format Taxonomy: ${FORMAT_TAXONOMY.join(', ')}
 
 When analyzing, first assess documentation sufficiency (score dimensions 0-100). If all >= 60, generate a Work Plan. If not, ask specific questions.
 
+When the user asks you to "improve" or "auto-improve" the scope, use your best judgment to fill gaps, strengthen weak areas, and then generate a complete Work Plan.
+
 ALWAYS respond with valid JSON. Choose one of:
 
 If insufficient:
 {"type":"sufficiency_assessment","dimensions":[{"dimension":"Outcome Clarity","score":75,"feedback":"...","questions":["..."]}],"overallScore":65,"isReady":false}
 
-If sufficient:
+If sufficient (or after auto-improvement):
 {"type":"work_plan","summary":"...","workstreams":[{"title":"...","description":"...","orderIndex":0,"dependencies":[],"deliverables":[{"title":"...","description":"...","format":"codebase","acceptanceCriteria":[{"description":"...","measurableCondition":"..."}],"estimatedEffortHours":8,"requiredSkills":["..."],"suggestedRole":"..."}]}],"estimatedTotalHours":40,"suggestedTimelineDays":14,"roles":[{"title":"...","description":"...","isRequired":true}]}
 
-Respond ONLY with the JSON object.`;
+IMPORTANT: Respond with ONLY ONE JSON object per response. Never output multiple JSON objects.`;
 }
 
 export async function POST(
@@ -63,8 +65,8 @@ export async function POST(
     .set({ status: 'analyzing', updatedAt: new Date() })
     .where(eq(scopeProposals.id, proposalId));
 
-  // Build the user message
-  const userMessage = `## Scope Proposal
+  // Build the initial scope context message
+  const scopeContext = `## Scope Proposal
 
 ### Title
 ${proposal.title}
@@ -81,11 +83,22 @@ Timeline: ${proposal.timelineDays ? `${proposal.timelineDays} days` : 'Not speci
 
 Assess sufficiency and generate a work plan if ready.`;
 
-  const messages: Anthropic.MessageParam[] = body.messages?.length
-    ? body.messages
-    : [{ role: 'user' as const, content: userMessage }];
+  // Build Anthropic messages array
+  let messages: Anthropic.MessageParam[];
 
-  // Use non-streaming first to avoid SSE complexity issues, then send as SSE
+  if (body.messages?.length) {
+    // Follow-up conversation — map roles and prepend scope context
+    messages = [
+      { role: 'user' as const, content: scopeContext },
+      ...body.messages.map((m: { role: string; content: string }) => ({
+        role: (m.role === 'analyst' ? 'assistant' : 'user') as 'user' | 'assistant',
+        content: m.content,
+      })),
+    ];
+  } else {
+    messages = [{ role: 'user' as const, content: scopeContext }];
+  }
+
   const encoder = new TextEncoder();
   const readableStream = new ReadableStream({
     async start(controller) {
@@ -114,7 +127,7 @@ Assess sufficiency and generate a work plan if ready.`;
         });
 
         stream.on('end', async () => {
-          // Parse the result to determine status
+          // Parse result
           let resultType: string | undefined;
           let isReady = false;
           try {
@@ -122,10 +135,17 @@ Assess sufficiency and generate a work plan if ready.`;
             resultType = parsed.type;
             isReady = parsed.type === 'work_plan' || parsed.isReady === true;
           } catch {
-            // not valid JSON
+            // Try to find JSON in response
+            const match = fullText.match(/\{[\s\S]*"type"\s*:\s*"(work_plan|sufficiency_assessment)"[\s\S]*\}/);
+            if (match) {
+              try {
+                const parsed = JSON.parse(match[0]);
+                resultType = parsed.type;
+                isReady = parsed.type === 'work_plan' || parsed.isReady === true;
+              } catch { /* skip */ }
+            }
           }
 
-          // Send done event with parsed status info
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({
               type: 'done',
@@ -136,15 +156,15 @@ Assess sufficiency and generate a work plan if ready.`;
           );
           controller.close();
 
-          // Store result
+          // Store result and update status
+          const newStatus = isReady ? 'ready' : 'needs_info';
           try {
             const parsed = JSON.parse(fullText);
-            const isReady = parsed.type === 'work_plan' || parsed.isReady === true;
             await db
               .update(scopeProposals)
               .set({
                 aiAnalysis: parsed,
-                status: isReady ? 'ready' : 'needs_info',
+                status: newStatus,
                 updatedAt: new Date(),
               })
               .where(eq(scopeProposals.id, proposalId));
@@ -153,7 +173,7 @@ Assess sufficiency and generate a work plan if ready.`;
               .update(scopeProposals)
               .set({
                 aiAnalysis: { raw: fullText },
-                status: 'needs_info',
+                status: newStatus,
                 updatedAt: new Date(),
               })
               .where(eq(scopeProposals.id, proposalId));
