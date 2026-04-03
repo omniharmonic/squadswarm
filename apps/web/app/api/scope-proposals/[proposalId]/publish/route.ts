@@ -28,18 +28,31 @@ export async function POST(
   }
   if (proposal.status !== 'ready') {
     return NextResponse.json(
-      { error: 'Proposal must be in ready status to publish' },
+      { error: `Proposal must be in ready status to publish (current: ${proposal.status})` },
       { status: 400 },
     );
   }
 
-  // Extract work plan from AI analysis
+  // Extract work plan from AI analysis — handle multiple storage formats
   const aiAnalysis = proposal.aiAnalysis as Record<string, unknown> | null;
-  const workPlan = aiAnalysis?.type === 'work_plan' ? aiAnalysis : null;
+  let workPlan: Record<string, unknown> | null = null;
+
+  if (aiAnalysis?.type === 'work_plan') {
+    workPlan = aiAnalysis;
+  } else if (typeof aiAnalysis?.raw === 'string') {
+    // Stored as { raw: "json string" } — try to extract work plan
+    const rawStr = aiAnalysis.raw as string;
+    const jsonMatch = rawStr.match(/```json\s*([\s\S]*?)```/);
+    const toParse = jsonMatch?.[1]?.trim() || rawStr.trim();
+    try {
+      const parsed = JSON.parse(toParse);
+      if (parsed.type === 'work_plan') workPlan = parsed;
+    } catch { /* skip */ }
+  }
 
   if (!workPlan) {
     return NextResponse.json(
-      { error: 'No work plan generated. Complete AI analysis first.' },
+      { error: 'No work plan found in analysis. Use "Auto-improve" to generate one.' },
       { status: 400 },
     );
   }
