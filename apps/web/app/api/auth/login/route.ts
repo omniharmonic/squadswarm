@@ -13,6 +13,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
+    // Basic email format validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    }
+
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
