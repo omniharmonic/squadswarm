@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 type FormData = {
   title: string;
@@ -67,14 +68,21 @@ export default function SubmitScopePage() {
 
       const data = await res.json();
       if (data.id) setSavedId(data.id);
+      toast.success('Draft saved');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setError(message);
+      toast.error('Failed to save draft');
     } finally {
       setSaving(false);
     }
   }
 
   async function handleSubmitForAnalysis() {
+    if (!form.title.trim()) {
+      setError('Title is required.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -136,11 +144,15 @@ export default function SubmitScopePage() {
             <input
               id="title"
               type="text"
+              required
               value={form.title}
               onChange={(e) => update('title', e.target.value)}
               placeholder="e.g. Regenerative Finance Dashboard"
               className={inputClass}
             />
+            {!form.title.trim() && error && (
+              <p className="mt-1 text-xs text-error">Title is required.</p>
+            )}
           </div>
 
           {/* Scope Narrative */}

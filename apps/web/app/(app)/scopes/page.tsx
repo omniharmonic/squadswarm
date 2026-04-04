@@ -139,8 +139,60 @@ function TrustBadge({ threshold }: { threshold: string }) {
   );
 }
 
+function ScopeCard({ scope }: { scope: ScopeItem }) {
+  return (
+    <Link
+      href={scope._isMock ? '#' : `/scopes/${scope.id}`}
+      className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow group"
+      onClick={scope._isMock ? (e: React.MouseEvent) => e.preventDefault() : undefined}
+    >
+      {/* Title */}
+      <h2 className="text-base font-semibold text-text-primary line-clamp-2 group-hover:text-accent-squad transition-colors mb-2">
+        {scope.title}
+      </h2>
+
+      {/* Tags */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {(scope.categoryTags ?? []).map((tag) => (
+          <span
+            key={tag}
+            className="px-2 py-0.5 bg-bg-secondary text-text-secondary text-xs rounded-full"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      {/* Budget & Timeline */}
+      <div className="space-y-1.5 text-sm mb-3">
+        <div className="flex items-center justify-between">
+          <span className="text-text-secondary">Budget</span>
+          <span className="font-medium text-text-primary">
+            {formatBudget(scope.budgetMin, scope.budgetMax)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-text-secondary">Timeline</span>
+          <span className="font-medium text-text-primary">
+            {scope.timelineDays ? `${scope.timelineDays} days` : 'Flexible'}
+          </span>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between pt-3 border-t border-border">
+        <TrustBadge threshold={scope.trustThreshold || 'open'} />
+        <span className="text-xs text-text-secondary">
+          {scope.biddingDeadline ? daysLeft(scope.biddingDeadline) : ''}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 export default function ScopeBoardPage() {
-  const [scopes, setScopes] = useState<ScopeItem[]>(MOCK_SCOPES);
+  const [realScopes, setRealScopes] = useState<ScopeItem[]>([]);
+  const [mockScopes, setMockScopes] = useState<ScopeItem[]>(MOCK_SCOPES);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -149,19 +201,14 @@ export default function ScopeBoardPage() {
         if (!res.ok) throw new Error('Failed to fetch');
         return res.json();
       })
-      .then((realScopes: ScopeItem[]) => {
-        if (realScopes.length > 0) {
-          // Deduplicate: remove mocks whose titles match a real scope
-          const realTitles = new Set(realScopes.map((s) => s.title.toLowerCase()));
-          const filteredMocks = MOCK_SCOPES.filter(
-            (m) => !realTitles.has(m.title.toLowerCase())
-          );
-          setScopes([...realScopes, ...filteredMocks]);
-        }
-        // If no real scopes, keep the mocks already set
+      .then((fetched: ScopeItem[]) => {
+        setRealScopes(fetched);
+        // Deduplicate: remove mocks whose titles match a real scope
+        const realTitles = new Set(fetched.map((s) => s.title.toLowerCase()));
+        setMockScopes(MOCK_SCOPES.filter((m) => !realTitles.has(m.title.toLowerCase())));
       })
       .catch(() => {
-        // On error (e.g. not authenticated), keep mock data
+        // On error (e.g. not authenticated), keep mock data as fallback
       })
       .finally(() => setLoading(false));
   }, []);
@@ -189,56 +236,36 @@ export default function ScopeBoardPage() {
           <div className="w-8 h-8 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {scopes.map((scope) => (
-            <Link
-              key={scope.id}
-              href={`/scopes/${scope.id}`}
-              className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow group"
-            >
-              {/* Title */}
-              <h2 className="text-base font-semibold text-text-primary line-clamp-2 group-hover:text-accent-squad transition-colors mb-2">
-                {scope.title}
-              </h2>
+        <>
+          {/* Real scopes */}
+          {realScopes.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {realScopes.map((scope) => (
+                <ScopeCard key={scope.id} scope={scope} />
+              ))}
+            </div>
+          )}
 
-              {/* Tags */}
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {(scope.categoryTags ?? []).map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2 py-0.5 bg-bg-secondary text-text-secondary text-xs rounded-full"
-                  >
-                    {tag}
+          {/* Example scopes divider + cards */}
+          {mockScopes.length > 0 && (
+            <>
+              {realScopes.length > 0 && (
+                <div className="flex items-center gap-3 my-8">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs text-text-secondary font-medium uppercase tracking-wider">
+                    Example Scopes
                   </span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {mockScopes.map((scope) => (
+                  <ScopeCard key={scope.id} scope={scope} />
                 ))}
               </div>
-
-              {/* Budget & Timeline */}
-              <div className="space-y-1.5 text-sm mb-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Budget</span>
-                  <span className="font-medium text-text-primary">
-                    {formatBudget(scope.budgetMin, scope.budgetMax)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Timeline</span>
-                  <span className="font-medium text-text-primary">
-                    {scope.timelineDays ? `${scope.timelineDays} days` : 'Flexible'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between pt-3 border-t border-border">
-                <TrustBadge threshold={scope.trustThreshold || 'open'} />
-                <span className="text-xs text-text-secondary">
-                  {scope.biddingDeadline ? daysLeft(scope.biddingDeadline) : ''}
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>
+            </>
+          )}
+        </>
       )}
     </div>
   );

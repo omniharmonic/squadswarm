@@ -2,9 +2,9 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-bg-primary">
       {/* Nav */}
-      <nav className="flex items-center justify-between px-8 py-5 max-w-6xl mx-auto">
+      <nav className="flex items-center justify-between px-4 sm:px-8 py-5 max-w-6xl mx-auto">
         <span className="text-xl font-bold">SquadSwarm</span>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <a href="/scopes" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
             Scope Board
           </a>
@@ -18,30 +18,30 @@ export default function HomePage() {
       </nav>
 
       {/* Hero */}
-      <section className="max-w-4xl mx-auto px-8 pt-24 pb-20 text-center">
+      <section className="max-w-4xl mx-auto px-4 sm:px-8 pt-16 sm:pt-24 pb-14 sm:pb-20 text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-accent-squad/10 text-accent-squad rounded-full text-sm font-medium mb-6">
           <span className="w-2 h-2 bg-accent-squad rounded-full animate-pulse" />
           Now in public beta
         </div>
-        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
           Squads bid.
           <br />
           <span className="text-accent-squad">Swarms deliver.</span>
         </h1>
-        <p className="text-text-secondary text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+        <p className="text-text-secondary text-base sm:text-lg md:text-xl max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed">
           SquadSwarm is the coordination layer for cooperative teams amplified by AI agents.
           Submit scopes. Form squads. Let your swarm handle the rest.
         </p>
-        <div className="flex items-center justify-center gap-4">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
           <a
             href="/signup"
-            className="px-8 py-3.5 bg-accent-squad text-white rounded-xl font-medium text-lg hover:opacity-90 transition-opacity shadow-sm"
+            className="w-full sm:w-auto px-8 py-3.5 bg-accent-squad text-white rounded-xl font-medium text-lg hover:opacity-90 transition-opacity shadow-sm text-center"
           >
             Create Your Squad
           </a>
           <a
             href="/scopes"
-            className="px-8 py-3.5 border border-border rounded-xl font-medium text-lg hover:bg-bg-secondary transition-colors"
+            className="w-full sm:w-auto px-8 py-3.5 border border-border rounded-xl font-medium text-lg hover:bg-bg-secondary transition-colors text-center"
           >
             Browse Scopes
           </a>
@@ -49,8 +49,8 @@ export default function HomePage() {
       </section>
 
       {/* How It Works */}
-      <section className="max-w-5xl mx-auto px-8 py-20">
-        <h2 className="text-3xl font-bold text-center mb-12">How it works</h2>
+      <section className="max-w-5xl mx-auto px-4 sm:px-8 py-12 sm:py-20">
+        <h2 className="text-2xl sm:text-3xl font-bold text-center mb-8 sm:mb-12">How it works</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {[
             {
@@ -92,7 +92,7 @@ export default function HomePage() {
       </section>
 
       {/* Key Features */}
-      <section className="max-w-5xl mx-auto px-8 py-16">
+      <section className="max-w-5xl mx-auto px-4 sm:px-8 py-12 sm:py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-2xl border border-border p-8">
             <div className="w-10 h-10 bg-accent-agent/10 rounded-lg flex items-center justify-center mb-4">
@@ -122,8 +122,8 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="max-w-5xl mx-auto px-8 py-12 border-t border-border">
-        <div className="flex items-center justify-between text-sm text-text-secondary">
+      <footer className="max-w-5xl mx-auto px-4 sm:px-8 py-8 sm:py-12 border-t border-border">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-text-secondary text-center sm:text-left">
           <span>SquadSwarm — Solidarity-based microcooperatives + AI swarms</span>
           <span>Built for the Regen Hub</span>
         </div>

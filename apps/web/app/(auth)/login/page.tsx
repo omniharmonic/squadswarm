@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -25,9 +26,12 @@ export default function LoginPage() {
       }
 
       setStatus('sent');
+      toast.success('Check your email for the magic link');
     } catch (err) {
       setStatus('error');
-      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong');
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setErrorMessage(message);
+      toast.error(message);
     }
   }
 

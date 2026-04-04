@@ -97,6 +97,7 @@ export default function DashboardPage() {
   const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
   const [loadingSquads, setLoadingSquads] = useState(true);
   const [loadingProposals, setLoadingProposals] = useState(true);
+  const [openScopeCount, setOpenScopeCount] = useState<number | null>(null);
   const [loadingContracts, setLoadingContracts] = useState(true);
 
   useEffect(() => {
@@ -117,13 +118,18 @@ export default function DashboardPage() {
       .then((data: Contract[]) => setActiveContracts(data.filter((c) => c.status === 'active' || c.status === 'pending_deposit')))
       .catch(() => {})
       .finally(() => setLoadingContracts(false));
+
+    fetch('/api/scopes')
+      .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
+      .then((data: Array<{ id: string }>) => setOpenScopeCount(data.length))
+      .catch(() => setOpenScopeCount(0));
   }, []);
 
   const isLoading = loadingSquads || loadingProposals || loadingContracts;
 
   const quickStats = [
     { label: 'Active Squads', value: isLoading ? '-' : String(squads.length || 0), icon: '\uD83D\uDC65' },
-    { label: 'Open Scopes', value: '6', icon: '\uD83D\uDCCB' },
+    { label: 'Open Scopes', value: openScopeCount === null ? '-' : String(openScopeCount), icon: '\uD83D\uDCCB' },
     { label: 'Your Proposals', value: isLoading ? '-' : String(proposals.length || 0), icon: '\uD83D\uDCDD' },
     { label: 'Trust Score', value: '85', icon: '\u2B50' },
   ];

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 const GOVERNANCE_OPTIONS = [
   {
@@ -67,10 +68,13 @@ export default function CreateSquadPage() {
       }
 
       const squad = await res.json();
+      toast.success('Squad created!');
       router.push(`/squads/${squad.id}`);
     } catch (err) {
       setStatus('error');
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setError(message);
+      toast.error(message);
     }
   }
 

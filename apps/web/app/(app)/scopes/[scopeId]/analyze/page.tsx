@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 type Message = { role: 'analyst' | 'user'; content: string };
 
@@ -342,9 +343,12 @@ export default function AIAnalysisPage() {
         throw new Error(data.error || 'Publish failed');
       }
       const scope = await res.json();
+      toast.success('Scope published to board!');
       router.push(`/scopes/${scope.id}`);
     } catch (err) {
-      setMessages((prev) => [...prev, { role: 'analyst', content: `Publish error: ${err instanceof Error ? err.message : 'Failed'}` }]);
+      const message = err instanceof Error ? err.message : 'Failed';
+      toast.error(message);
+      setMessages((prev) => [...prev, { role: 'analyst', content: `Publish error: ${message}` }]);
     } finally {
       setPublishing(false);
     }

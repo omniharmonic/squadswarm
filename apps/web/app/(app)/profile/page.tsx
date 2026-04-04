@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 interface User {
   id: string;
@@ -18,7 +19,6 @@ export default function MyProfilePage() {
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     fetch('/api/users/me')
@@ -47,7 +47,6 @@ export default function MyProfilePage() {
 
   async function handleSave() {
     setSaving(true);
-    setSaved(false);
     try {
       const res = await fetch('/api/users/me', {
         method: 'PATCH',
@@ -57,10 +56,13 @@ export default function MyProfilePage() {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
+        toast.success('Profile updated');
+      } else {
+        toast.error('Failed to save profile');
       }
-    } catch {}
+    } catch {
+      toast.error('Failed to save profile');
+    }
     setSaving(false);
   }
 
@@ -142,7 +144,6 @@ export default function MyProfilePage() {
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
-            {saved && <span className="text-sm text-success">Saved!</span>}
           </div>
         </div>
       </div>
