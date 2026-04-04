@@ -8,26 +8,32 @@
 
 ---
 
-## Sprint Progress (Updated 2026-04-04)
+## Sprint Progress (Updated 2026-04-04 evening)
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 Foundation | ✅ COMPLETE | Turborepo, Drizzle schema (18 tables), Neon DB, Supabase storage, magic link auth, app shell, sidebar nav |
 | P1 Scope Pipeline | ✅ COMPLETE | Scope submission, AI Scope Analyst (conversational + structured JSON, auto-improve), publish, Scope Board with real+mock data, markdown rendering |
 | P2 Squad & Bidding | ✅ COMPLETE | Squad CRUD, membership, agent registry with API keys, bid CRUD, bid acceptance → contract creation with workstreams + deliverables |
-| P3 Contract & Collaboration | ✅ COMPLETE | Contract overview, Kanban board, Discussion, PM Dashboard, Client Review — all wired to real APIs with mock fallback. Deliverable status transitions validated. Messaging + activity log working. |
-| P4 MCP Agent Integration | ⬜ NOT STARTED | |
-| P5 Payments & Completion | 🟡 PARTIAL | Contract completion API built. Stripe checkout stub needed. |
-| P6 Trust & Discovery | ⬜ NOT STARTED | |
-| P7 Web3 Module | ⬜ NOT STARTED | |
-| P8 Polish & Launch | ⬜ NOT STARTED | |
+| P3 Contract & Collaboration | ✅ COMPLETE | Contract overview, Kanban board, Discussion, PM Dashboard, Client Review, Timeline, Files — all wired to real APIs with mock fallback. Deliverable status transitions validated. Messaging + activity log working. All 7 stub pages replaced. |
+| P4 MCP Agent Integration | 🟡 IN PROGRESS | MCP server with 9 tools defined + guidelines resource. HTTP endpoint with agent auth. Wiring tools to real DB in progress. |
+| P5 Payments & Completion | 🟡 IN PROGRESS | Contract completion + deposit APIs built. Stripe client stub, handoff package, dispute flow in progress. |
+| P6 Trust & Discovery | 🟡 IN PROGRESS | Basic trust score API + reputation page done. Client rating, trust badges, suggestion engine in progress. |
+| P7 Web3 Module | 🟡 STUBBED | Wallet settings page built. SIWE, smart contracts, EAS are future work (progressive enhancement). |
+| P8 Polish & Launch | 🟡 IN PROGRESS | CI, favicon, OG image, loading states, 404, toasts done. Deployed to Vercel at squadswarm.xyz. User docs, MCP docs, about page in progress. |
 
-**E2E tested (2026-04-04, 7 flows, all passing):**
+**Production:** https://www.squadswarm.xyz (Vercel, omniharmonic account)
+**Stats:** 24 commits, ~27K LOC, 33 API routes, 31+ pages, 18 DB tables
+
+**E2E tested (2026-04-04, 8 flows, all passing):**
 1. Auth: login → magic link → verify → session → logout
 2. Squad: create → list → detail → members → register agent (with API key)
-3. Scope: submit → AI analysis (44 streaming chunks) → auto-improve → work_plan → publish
-4. Bidding: create bid → accept → contract created (4 workstreams, 10 deliverables)
-5. Contract: overview → kanban → status transitions (valid+invalid) → approve → messages → activity log
+3. Scope: submit → AI analysis (streaming) → auto-improve → work_plan → publish
+4. Bidding: create bid → accept → contract created with workstreams + deliverables
+5. Contract: overview → kanban → status transitions → approve → cascading completion
+6. Collaboration: messages → activity log → discussion channels
+7. Profile: update → trust score → reputation page
+8. Full pipeline: scope → AI → publish → bid → contract → deposit → deliver → complete
 6. Profile: get → update name+bio → settings → logout
 7. Dashboard: real squads, proposals, contracts from API
 

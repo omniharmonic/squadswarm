@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { TrustBadge } from '@/components/trust-badge';
 
 interface Squad {
   id: string;
@@ -118,8 +119,8 @@ export default function MySquadsPage() {
               {squad.bio && (
                 <p className="text-text-secondary text-sm line-clamp-2">{squad.bio}</p>
               )}
-              <div className="mt-3 flex items-center gap-3 text-xs text-text-secondary">
-                <span>Trust: {parseFloat(squad.trustScore).toFixed(0)}</span>
+              <div className="mt-3 flex items-center gap-3">
+                <TrustBadge score={parseFloat(squad.trustScore)} />
               </div>
             </Link>
           ))}

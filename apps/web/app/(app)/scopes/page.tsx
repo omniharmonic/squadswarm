@@ -129,14 +129,34 @@ const trustColors: Record<string, string> = {
   elite: 'bg-accent-squad/10 text-accent-squad',
 };
 
-function TrustBadge({ threshold }: { threshold: string }) {
+const thresholdScores: Record<string, number> = {
+  open: 0,
+  verified: 30,
+  trusted: 60,
+  elite: 80,
+};
+
+function TrustThresholdBadge({ threshold }: { threshold: string }) {
+  const minScore = thresholdScores[threshold] ?? 0;
   return (
     <span
-      className={`inline-block px-2 py-0.5 rounded text-xs font-medium capitalize ${trustColors[threshold] ?? trustColors.open}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium capitalize ${trustColors[threshold] ?? trustColors.open}`}
     >
-      {threshold}
+      <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" />
+      </svg>
+      {threshold}{minScore > 0 ? ` ${minScore}+` : ''}
     </span>
   );
+}
+
+interface RecommendedScope {
+  id: string;
+  title: string;
+  categoryTags: string[] | null;
+  budgetMin: string | null;
+  budgetMax: string | null;
+  matchScore: number;
 }
 
 function ScopeCard({ scope }: { scope: ScopeItem }) {
@@ -181,7 +201,7 @@ function ScopeCard({ scope }: { scope: ScopeItem }) {
 
       {/* Footer */}
       <div className="flex items-center justify-between pt-3 border-t border-border">
-        <TrustBadge threshold={scope.trustThreshold || 'open'} />
+        <TrustThresholdBadge threshold={scope.trustThreshold || 'open'} />
         <span className="text-xs text-text-secondary">
           {scope.biddingDeadline ? daysLeft(scope.biddingDeadline) : ''}
         </span>
@@ -194,6 +214,7 @@ export default function ScopeBoardPage() {
   const [realScopes, setRealScopes] = useState<ScopeItem[]>([]);
   const [mockScopes, setMockScopes] = useState<ScopeItem[]>(MOCK_SCOPES);
   const [loading, setLoading] = useState(true);
+  const [recommended, setRecommended] = useState<RecommendedScope[]>([]);
 
   useEffect(() => {
     fetch('/api/scopes')
@@ -203,7 +224,6 @@ export default function ScopeBoardPage() {
       })
       .then((fetched: ScopeItem[]) => {
         setRealScopes(fetched);
-        // Deduplicate: remove mocks whose titles match a real scope
         const realTitles = new Set(fetched.map((s) => s.title.toLowerCase()));
         setMockScopes(MOCK_SCOPES.filter((m) => !realTitles.has(m.title.toLowerCase())));
       })
@@ -211,6 +231,19 @@ export default function ScopeBoardPage() {
         // On error (e.g. not authenticated), keep mock data as fallback
       })
       .finally(() => setLoading(false));
+
+    // Fetch recommended scopes
+    fetch('/api/scopes/recommended')
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed');
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) setRecommended(data);
+      })
+      .catch(() => {
+        // silently fail — no recommendations shown
+      });
   }, []);
 
   return (
@@ -230,6 +263,44 @@ export default function ScopeBoardPage() {
           Submit a Scope
         </Link>
       </div>
+
+      {/* Recommended for Your Squads */}
+      {recommended.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-text-primary mb-3">Recommended for Your Squads</h2>
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+            {recommended.map((scope) => (
+              <Link
+                key={scope.id}
+                href={`/scopes/${scope.id}`}
+                className="min-w-[260px] max-w-[300px] bg-white rounded-xl border border-border p-4 hover:shadow-md transition-shadow flex-shrink-0"
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="text-sm font-semibold text-text-primary line-clamp-2 flex-1">
+                    {scope.title}
+                  </h3>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-success/10 text-success whitespace-nowrap">
+                    {scope.matchScore}% match
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {(scope.categoryTags ?? []).slice(0, 3).map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-1.5 py-0.5 bg-bg-secondary text-text-secondary text-[10px] rounded-full"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-text-secondary">
+                  {formatBudget(scope.budgetMin, scope.budgetMax)}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12">

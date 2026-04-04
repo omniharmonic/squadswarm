@@ -17,6 +17,18 @@ export default function HomePage() {
         </a>
         <div className="flex items-center gap-3 sm:gap-4">
           <a
+            href="/docs"
+            className="text-sm text-text-secondary hover:text-accent-agent transition-colors"
+          >
+            Docs
+          </a>
+          <a
+            href="/about"
+            className="text-sm text-text-secondary hover:text-accent-agent transition-colors"
+          >
+            About
+          </a>
+          <a
             href="/scopes"
             className="text-sm text-text-secondary hover:text-accent-agent transition-colors"
           >
@@ -190,6 +202,25 @@ export default function HomePage() {
                 splits are transparent and enforced. No platform take rate on squad earnings.
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Built For */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-8 py-12 sm:py-16">
+        <div className="text-center">
+          <p className="text-sm font-medium text-text-secondary uppercase tracking-wider mb-6">
+            Built for the regenerative economy
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
+            {['Regen Hub', 'OpenCivics', 'Climate DAO'].map((name) => (
+              <span
+                key={name}
+                className="text-lg sm:text-xl font-semibold text-text-secondary/50"
+              >
+                {name}
+              </span>
+            ))}
           </div>
         </div>
       </section>
