@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
@@ -67,6 +67,12 @@ export default function DiscussionPage() {
   const [messageText, setMessageText] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [contractTitle, setContractTitle] = useState('');
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   useEffect(() => {
     fetch(`/api/contracts/${contractId}`)
@@ -74,6 +80,70 @@ export default function DiscussionPage() {
       .then((data) => { if (data) setContractTitle(data.title); })
       .catch(() => {});
   }, [contractId]);
+
+  // Fetch messages on mount and when channel changes
+  useEffect(() => {
+    fetch(`/api/contracts/${contractId}/messages`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data && data.messages) {
+          const mapped: Message[] = data.messages.map((msg: Record<string, unknown>) => ({
+            id: msg.id as string,
+            author: msg.author as string,
+            isAgent: msg.isAgent as boolean,
+            content: msg.content as string,
+            timestamp: msg.createdAt as string,
+            channel: msg.channelType as string,
+          }));
+          setMessages(mapped);
+        }
+      })
+      .catch(() => {});
+  }, [contractId]);
+
+  // Auto-scroll when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  const handleSend = async () => {
+    const text = messageText.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelType: activeChannel, content: text }),
+      });
+      if (res.ok) {
+        const newMsg = await res.json();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: newMsg.id,
+            author: newMsg.author,
+            isAgent: newMsg.isAgent,
+            content: newMsg.content,
+            timestamp: newMsg.createdAt,
+            channel: newMsg.channelType,
+          },
+        ]);
+        setMessageText('');
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
   const filteredMessages = messages.filter((m) => m.channel === activeChannel);
 
@@ -167,6 +237,7 @@ export default function DiscussionPage() {
                 </div>
               </div>
             ))}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Composer */}
@@ -176,12 +247,14 @@ export default function DiscussionPage() {
                 type="text"
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder={`Message #${CHANNELS.find((c) => c.id === activeChannel)?.label}...`}
                 className="flex-1 px-4 py-2.5 rounded-lg border border-border bg-bg-primary text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-squad/30 focus:border-accent-squad"
               />
               <button
+                onClick={handleSend}
                 className="px-5 py-2.5 bg-accent-squad text-white text-sm font-medium rounded-lg hover:bg-accent-squad/90 transition-colors disabled:opacity-50"
-                disabled={!messageText.trim()}
+                disabled={!messageText.trim() || sending}
               >
                 Send
               </button>

@@ -44,11 +44,7 @@ function BidBuilderContent() {
         if (Array.isArray(data)) setSquads(data);
       })
       .catch(() => {
-        // Mock data fallback
-        setSquads([
-          { id: 'mock-squad-1', name: 'Regen Builders', role: 'admin' },
-          { id: 'mock-squad-2', name: 'Impact Labs', role: 'member' },
-        ]);
+        setSquads([]);
       });
   }, []);
 
@@ -171,23 +167,39 @@ function BidBuilderContent() {
         {/* Squad Selection */}
         <div className="bg-white rounded-xl border border-border p-6">
           <h2 className="text-lg font-semibold mb-4">Bidding Squad</h2>
-          <label htmlFor="squad" className="block text-sm font-medium mb-1.5">
-            Select your squad
-          </label>
-          <select
-            id="squad"
-            value={selectedSquadId}
-            onChange={(e) => setSelectedSquadId(e.target.value)}
-            className="w-full px-3.5 py-2.5 border border-border rounded-lg bg-bg-primary
-                       focus:outline-none focus:ring-2 focus:ring-accent-squad/50 text-sm"
-          >
-            <option value="">Choose a squad...</option>
-            {squads.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.role})
-              </option>
-            ))}
-          </select>
+          {squads.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-text-secondary text-sm mb-3">
+                You need to create a squad first before you can submit a bid.
+              </p>
+              <Link
+                href="/squads/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-accent-squad text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
+              >
+                Create a Squad
+              </Link>
+            </div>
+          ) : (
+            <>
+              <label htmlFor="squad" className="block text-sm font-medium mb-1.5">
+                Select your squad
+              </label>
+              <select
+                id="squad"
+                value={selectedSquadId}
+                onChange={(e) => setSelectedSquadId(e.target.value)}
+                className="w-full px-3.5 py-2.5 border border-border rounded-lg bg-bg-primary
+                           focus:outline-none focus:ring-2 focus:ring-accent-squad/50 text-sm"
+              >
+                <option value="">Choose a squad...</option>
+                {squads.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.role})
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
 
         {/* Approach */}

@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
 type DeliverableWithWorkstream = {
   id: string;
   title: string;
+  description?: string;
   status: string;
   format: string;
   assignee: string;
+  assignedMemberId?: string | null;
+  assignedAgentId?: string | null;
+  acceptanceCriteria?: Array<{ text: string }> | null;
   workstream: string;
+  contractId?: string;
 };
 
 interface WorkstreamData {
@@ -19,10 +24,21 @@ interface WorkstreamData {
   deliverables: Array<{
     id: string;
     title: string;
+    description?: string;
     status: string;
     format: string;
     assignee: string;
+    assignedMemberId?: string | null;
+    assignedAgentId?: string | null;
+    acceptanceCriteria?: Array<{ text: string }> | null;
+    contractId?: string;
   }>;
+}
+
+interface SessionUser {
+  id: string;
+  email: string;
+  displayName: string;
 }
 
 const COLUMNS = [
@@ -62,6 +78,25 @@ export default function KanbanBoardPage() {
   const [allDeliverables, setAllDeliverables] = useState<DeliverableWithWorkstream[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+  const [selectedDeliverable, setSelectedDeliverable] = useState<DeliverableWithWorkstream | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [comments, setComments] = useState<Array<{ id: string; content: string; author: string; createdAt: string }>>([]);
+  const [sendingComment, setSendingComment] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Fetch current user session
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then((data) => {
+        if (data?.user) setCurrentUser(data.user);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchDeliverables = useCallback(async () => {
     try {
@@ -73,7 +108,6 @@ export default function KanbanBoardPage() {
         );
         setAllDeliverables(flattened);
       }
-      // Try to get contract title
       const contractRes = await fetch(`/api/contracts/${contractId}`);
       if (contractRes.ok) {
         const contractData = await contractRes.json();
@@ -90,6 +124,20 @@ export default function KanbanBoardPage() {
     fetchDeliverables();
   }, [fetchDeliverables]);
 
+  // Fetch comments when a deliverable is selected
+  useEffect(() => {
+    if (!selectedDeliverable) {
+      setComments([]);
+      return;
+    }
+    fetch(`/api/contracts/${contractId}/messages?channelType=deliverable&channelId=${selectedDeliverable.id}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.messages) setComments(data.messages);
+      })
+      .catch(() => {});
+  }, [selectedDeliverable, contractId]);
+
   async function handleStatusChange(deliverableId: string, newStatus: string) {
     setUpdatingId(deliverableId);
     try {
@@ -102,11 +150,71 @@ export default function KanbanBoardPage() {
         setAllDeliverables((prev) =>
           prev.map((d) => (d.id === deliverableId ? { ...d, status: newStatus } : d))
         );
+        if (selectedDeliverable?.id === deliverableId) {
+          setSelectedDeliverable((prev) => prev ? { ...prev, status: newStatus } : null);
+        }
       }
     } catch {
-      // Silently fail — user can retry
+      // Silently fail
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function handleClaim(deliverableId: string) {
+    if (!currentUser) return;
+    setUpdatingId(deliverableId);
+    try {
+      const res = await fetch(`/api/deliverables/${deliverableId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const assigneeName = data.assignee || currentUser.displayName || currentUser.email;
+        setAllDeliverables((prev) =>
+          prev.map((d) =>
+            d.id === deliverableId
+              ? { ...d, assignee: assigneeName, assignedMemberId: currentUser.id }
+              : d
+          )
+        );
+        if (selectedDeliverable?.id === deliverableId) {
+          setSelectedDeliverable((prev) =>
+            prev ? { ...prev, assignee: assigneeName, assignedMemberId: currentUser.id } : null
+          );
+        }
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function handleSendComment() {
+    if (!selectedDeliverable || !commentText.trim()) return;
+    setSendingComment(true);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: commentText.trim(),
+          channelType: 'deliverable',
+          channelId: selectedDeliverable.id,
+        }),
+      });
+      if (res.ok) {
+        const msg = await res.json();
+        setComments((prev) => [...prev, msg]);
+        setCommentText('');
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setSendingComment(false);
     }
   }
 
@@ -116,6 +224,9 @@ export default function KanbanBoardPage() {
     }
     return allDeliverables.filter((d) => d.status === columnKey);
   };
+
+  const isUnassigned = (d: DeliverableWithWorkstream) =>
+    d.assignee === 'Unassigned' && !d.assignedMemberId && !d.assignedAgentId;
 
   if (loading) {
     return (
@@ -147,7 +258,7 @@ export default function KanbanBoardPage() {
   }
 
   return (
-    <div>
+    <div className="relative">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -188,16 +299,20 @@ export default function KanbanBoardPage() {
                   const isBlocked = d.status === 'blocked';
                   const transitions = ALLOWED_TRANSITIONS[d.status] || [];
                   const isUpdating = updatingId === d.id;
+                  const unassigned = isUnassigned(d);
 
                   return (
                     <div
                       key={d.id}
                       className={`bg-white rounded-lg border border-border p-3 shadow-sm hover:shadow-md transition-shadow ${isAgent ? 'border-l-4 border-l-accent-agent' : ''} ${isUpdating ? 'opacity-60' : ''}`}
                     >
-                      {/* Title */}
-                      <p className="text-sm font-semibold text-text-primary truncate">
+                      {/* Clickable title */}
+                      <button
+                        onClick={() => setSelectedDeliverable(d)}
+                        className="text-sm font-semibold text-text-primary truncate block w-full text-left hover:text-accent-squad transition-colors"
+                      >
                         {d.title}
-                      </p>
+                      </button>
 
                       {/* Blocked badge */}
                       {isBlocked && (
@@ -214,6 +329,19 @@ export default function KanbanBoardPage() {
                           {d.format}
                         </span>
                       </div>
+
+                      {/* Claim button for unassigned deliverables */}
+                      {unassigned && currentUser && (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => handleClaim(d.id)}
+                            disabled={isUpdating}
+                            className="text-[11px] font-medium px-2.5 py-1 rounded bg-accent-squad/10 text-accent-squad hover:bg-accent-squad/20 transition-colors disabled:opacity-50"
+                          >
+                            Claim
+                          </button>
+                        </div>
+                      )}
 
                       {/* Status transition buttons */}
                       {transitions.length > 0 && (
@@ -234,7 +362,11 @@ export default function KanbanBoardPage() {
                       {/* Footer: assignee + workstream */}
                       <div className="mt-3 flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                          {isAgent ? (
+                          {unassigned ? (
+                            <div className="w-6 h-6 bg-bg-secondary rounded-full flex items-center justify-center shrink-0 border border-dashed border-border">
+                              <span className="text-[9px] text-text-secondary">?</span>
+                            </div>
+                          ) : isAgent ? (
                             <div className="w-6 h-6 bg-accent-agent/10 border border-accent-agent/30 rounded-sm rotate-45 flex items-center justify-center shrink-0">
                               <span className="text-[9px] font-bold text-accent-agent -rotate-45">
                                 {getInitials(d.assignee)}
@@ -248,7 +380,7 @@ export default function KanbanBoardPage() {
                             </div>
                           )}
                           <span className="text-xs text-text-secondary truncate max-w-[120px]">
-                            {d.assignee.replace(' (Agent)', '')}
+                            {unassigned ? 'Unassigned' : d.assignee.replace(' (Agent)', '')}
                           </span>
                         </div>
                         <span className="text-[10px] text-text-secondary truncate max-w-[80px]">
@@ -263,6 +395,193 @@ export default function KanbanBoardPage() {
           );
         })}
       </div>
+
+      {/* Deliverable Detail Slide-over Panel */}
+      {selectedDeliverable && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/20 z-40"
+            onClick={() => setSelectedDeliverable(null)}
+          />
+
+          {/* Panel */}
+          <div
+            ref={panelRef}
+            className="fixed right-0 top-0 h-full w-full max-w-lg bg-white border-l border-border shadow-xl z-50 overflow-y-auto"
+          >
+            {/* Panel header */}
+            <div className="sticky top-0 bg-white border-b border-border px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-text-primary truncate pr-4">
+                {selectedDeliverable.title}
+              </h2>
+              <button
+                onClick={() => setSelectedDeliverable(null)}
+                className="text-text-secondary hover:text-text-primary transition-colors shrink-0"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-6">
+              {/* Status & Format */}
+              <div className="flex items-center gap-3">
+                <span
+                  className={`text-xs font-medium px-2 py-0.5 rounded ${FORMAT_STYLES[selectedDeliverable.format] || FORMAT_STYLES.document}`}
+                >
+                  {selectedDeliverable.format}
+                </span>
+                <span className="text-xs font-medium px-2 py-0.5 rounded bg-bg-secondary text-text-secondary">
+                  {selectedDeliverable.status.replace(/_/g, ' ')}
+                </span>
+                <span className="text-xs text-text-secondary">
+                  {selectedDeliverable.workstream}
+                </span>
+              </div>
+
+              {/* Description */}
+              {selectedDeliverable.description && (
+                <div>
+                  <h4 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                    Description
+                  </h4>
+                  <p className="text-sm text-text-primary">{selectedDeliverable.description}</p>
+                </div>
+              )}
+
+              {/* Assigned member */}
+              <div>
+                <h4 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                  Assigned To
+                </h4>
+                {isUnassigned(selectedDeliverable) ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-text-secondary">Unassigned</span>
+                    {currentUser && (
+                      <button
+                        onClick={() => handleClaim(selectedDeliverable.id)}
+                        disabled={updatingId === selectedDeliverable.id}
+                        className="text-xs font-medium px-3 py-1.5 rounded bg-accent-squad text-white hover:bg-accent-squad/90 transition-colors disabled:opacity-50"
+                      >
+                        Claim this deliverable
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-bg-secondary rounded-full flex items-center justify-center">
+                      <span className="text-[10px] font-bold text-text-secondary">
+                        {getInitials(selectedDeliverable.assignee)}
+                      </span>
+                    </div>
+                    <span className="text-sm text-text-primary">
+                      {selectedDeliverable.assignee.replace(' (Agent)', '')}
+                    </span>
+                    {selectedDeliverable.assignee.includes('(Agent)') && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent-agent/10 text-accent-agent">
+                        Agent
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Acceptance Criteria */}
+              {selectedDeliverable.acceptanceCriteria && selectedDeliverable.acceptanceCriteria.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                    Acceptance Criteria
+                  </h4>
+                  <ul className="space-y-1.5">
+                    {selectedDeliverable.acceptanceCriteria.map((c, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-text-primary">
+                        <span className="text-text-secondary mt-0.5 shrink-0">--</span>
+                        <span>{c.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Status change buttons */}
+              {(() => {
+                const transitions = ALLOWED_TRANSITIONS[selectedDeliverable.status] || [];
+                if (transitions.length === 0) return null;
+                return (
+                  <div>
+                    <h4 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                      Actions
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {transitions.map((target) => (
+                        <button
+                          key={target}
+                          onClick={() => handleStatusChange(selectedDeliverable.id, target)}
+                          disabled={updatingId === selectedDeliverable.id}
+                          className="text-sm font-medium px-4 py-2 rounded-lg bg-bg-secondary text-text-secondary hover:bg-accent-squad/10 hover:text-accent-squad transition-colors disabled:opacity-50"
+                        >
+                          Move to {target.replace(/_/g, ' ')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Comments */}
+              <div>
+                <h4 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                  Comments
+                </h4>
+                {comments.length === 0 && (
+                  <p className="text-sm text-text-secondary mb-3">No comments yet.</p>
+                )}
+                {comments.length > 0 && (
+                  <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+                    {comments.map((c) => (
+                      <div key={c.id} className="bg-bg-secondary rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-text-primary">{c.author}</span>
+                          <span className="text-[10px] text-text-secondary">
+                            {new Date(c.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-text-primary">{c.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add comment */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendComment();
+                      }
+                    }}
+                    placeholder="Add a comment..."
+                    className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-bg-primary focus:outline-none focus:ring-2 focus:ring-accent-squad/50"
+                  />
+                  <button
+                    onClick={handleSendComment}
+                    disabled={sendingComment || !commentText.trim()}
+                    className="px-4 py-2 bg-accent-squad text-white text-sm font-medium rounded-lg hover:bg-accent-squad/90 transition-colors disabled:opacity-50"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

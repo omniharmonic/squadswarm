@@ -23,28 +23,11 @@ interface Proposal {
   updatedAt: string;
 }
 
-const RECENT_ACTIVITY = [
-  {
-    action: 'CodeSwarm submitted Data Normalization Layer for review',
-    time: '2 hours ago',
-    isAgent: true,
-  },
-  {
-    action: 'Kai Torres approved Subgraph Integration',
-    time: '5 hours ago',
-    isAgent: false,
-  },
-  {
-    action: 'New scope posted: Carbon Credit Verification Audit',
-    time: '8 hours ago',
-    isAgent: false,
-  },
-  {
-    action: 'ResearchBot drafted tooltip copy for impact metrics',
-    time: '1 day ago',
-    isAgent: true,
-  },
-];
+interface ActivityItem {
+  action: string;
+  time: string;
+  isAgent: boolean;
+}
 
 const proposalStatusColors: Record<string, string> = {
   draft: 'bg-bg-secondary text-text-secondary',
@@ -99,6 +82,9 @@ export default function DashboardPage() {
   const [loadingProposals, setLoadingProposals] = useState(true);
   const [openScopeCount, setOpenScopeCount] = useState<number | null>(null);
   const [loadingContracts, setLoadingContracts] = useState(true);
+  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(true);
+  const [trustScore, setTrustScore] = useState<string>('-');
 
   useEffect(() => {
     fetch('/api/squads')
@@ -123,6 +109,41 @@ export default function DashboardPage() {
       .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
       .then((data: Array<{ id: string }>) => setOpenScopeCount(data.length))
       .catch(() => setOpenScopeCount(0));
+
+    // Fetch trust score
+    fetch('/api/users/me/trust-score')
+      .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
+      .then((data: { score: number }) => setTrustScore(String(data.score)))
+      .catch(() => setTrustScore('-'));
+
+    // Fetch recent activity from first contract
+    fetch('/api/contracts')
+      .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
+      .then((contracts: Contract[]) => {
+        if (contracts.length === 0) {
+          setLoadingActivity(false);
+          return;
+        }
+        const firstContract = contracts[0]!;
+        return fetch(`/api/contracts/${firstContract.id}/activity`)
+          .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
+          .then((activities: Array<{ action: string; timestamp: string; isAgent?: boolean }>) => {
+            const mapped: ActivityItem[] = activities.map((a) => {
+              const date = new Date(a.timestamp);
+              const now = new Date();
+              const diffMs = now.getTime() - date.getTime();
+              const diffMins = Math.floor(diffMs / 60000);
+              let time: string;
+              if (diffMins < 60) time = `${diffMins}m ago`;
+              else if (diffMins < 1440) time = `${Math.floor(diffMins / 60)}h ago`;
+              else time = `${Math.floor(diffMins / 1440)}d ago`;
+              return { action: a.action, time, isAgent: a.isAgent ?? false };
+            });
+            setRecentActivity(mapped);
+          });
+      })
+      .catch(() => {})
+      .finally(() => setLoadingActivity(false));
   }, []);
 
   const isLoading = loadingSquads || loadingProposals || loadingContracts;
@@ -160,7 +181,7 @@ export default function DashboardPage() {
     },
     {
       label: 'Trust Score',
-      value: '85',
+      value: trustScore,
       color: 'bg-success/10 text-success',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -321,21 +342,29 @@ export default function DashboardPage() {
         {/* Recent Activity */}
         <div className="bg-white rounded-xl border border-border p-6">
           <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
-          <div className="space-y-4">
-            {RECENT_ACTIVITY.map((item, i) => (
-              <div key={i} className="flex gap-3">
-                <div
-                  className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                    item.isAgent ? 'bg-accent-agent' : 'bg-accent-squad'
-                  }`}
-                />
-                <div>
-                  <p className="text-sm leading-snug">{item.action}</p>
-                  <p className="text-xs text-text-secondary mt-0.5">{item.time}</p>
+          {loadingActivity ? (
+            <div className="text-center py-6">
+              <div className="w-6 h-6 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          ) : recentActivity.length === 0 ? (
+            <p className="text-sm text-text-secondary text-center py-6">No recent activity</p>
+          ) : (
+            <div className="space-y-4">
+              {recentActivity.map((item, i) => (
+                <div key={i} className="flex gap-3">
+                  <div
+                    className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                      item.isAgent ? 'bg-accent-agent' : 'bg-accent-squad'
+                    }`}
+                  />
+                  <div>
+                    <p className="text-sm leading-snug">{item.action}</p>
+                    <p className="text-xs text-text-secondary mt-0.5">{item.time}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

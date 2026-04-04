@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const navItems = [
   {
@@ -58,6 +58,20 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userName, setUserName] = useState('User');
+
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.user) {
+          const displayName = data.user.displayName
+            || (data.user.email ? data.user.email.split('@')[0] : null);
+          if (displayName) setUserName(displayName);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -122,11 +136,11 @@ export function Sidebar() {
       <div className="px-3 py-3 border-t border-border">
         <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
           <div className="w-8 h-8 rounded-full bg-accent-agent/10 text-accent-agent flex items-center justify-center text-xs font-semibold shrink-0">
-            U
+            {userName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-text-primary truncate">User</p>
+              <p className="text-sm font-medium text-text-primary truncate">{userName}</p>
               <p className="text-[11px] text-text-secondary leading-tight">Member</p>
             </div>
           )}
