@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
@@ -45,6 +46,18 @@ type DeliverableWithWorkstream = {
   workstream: string;
 };
 
+interface WorkstreamData {
+  id: string;
+  title: string;
+  deliverables: Array<{
+    id: string;
+    title: string;
+    status: string;
+    format: string;
+    assignee: string;
+  }>;
+}
+
 const COLUMNS = [
   { key: 'not_started', label: 'Not Started', headerBg: 'bg-bg-secondary' },
   { key: 'in_progress', label: 'In Progress', headerBg: 'bg-accent-client/10' },
@@ -59,6 +72,14 @@ const FORMAT_STYLES: Record<string, string> = {
   design: 'bg-accent-client/10 text-accent-client',
 };
 
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  not_started: ['in_progress'],
+  in_progress: ['in_review', 'blocked'],
+  in_review: ['approved', 'revision_requested'],
+  revision_requested: ['in_progress'],
+  blocked: ['in_progress'],
+};
+
 function getInitials(name: string) {
   return name
     .replace(/\s*\(Agent\)/, '')
@@ -70,13 +91,61 @@ function getInitials(name: string) {
 export default function KanbanBoardPage() {
   const params = useParams();
   const contractId = params.contractId as string;
-
-  // Flatten deliverables with workstream context
-  const allDeliverables: DeliverableWithWorkstream[] = MOCK_CONTRACT.workstreams.flatMap((ws) =>
-    ws.deliverables.map((d) => ({ ...d, workstream: ws.title }))
+  const [contractTitle, setContractTitle] = useState(MOCK_CONTRACT.title);
+  const [allDeliverables, setAllDeliverables] = useState<DeliverableWithWorkstream[]>(() =>
+    MOCK_CONTRACT.workstreams.flatMap((ws) =>
+      ws.deliverables.map((d) => ({ ...d, workstream: ws.title }))
+    )
   );
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Also treat "blocked" as a separate visual under "not_started" column for now
+  const fetchDeliverables = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/deliverables`);
+      if (res.ok) {
+        const data: WorkstreamData[] = await res.json();
+        const flattened = data.flatMap((ws) =>
+          ws.deliverables.map((d) => ({ ...d, workstream: ws.title }))
+        );
+        if (flattened.length > 0) {
+          setAllDeliverables(flattened);
+        }
+        // Try to get contract title
+        const contractRes = await fetch(`/api/contracts/${contractId}`);
+        if (contractRes.ok) {
+          const contractData = await contractRes.json();
+          setContractTitle(contractData.title);
+        }
+      }
+    } catch {
+      // Keep mock data as fallback
+    }
+  }, [contractId]);
+
+  useEffect(() => {
+    fetchDeliverables();
+  }, [fetchDeliverables]);
+
+  async function handleStatusChange(deliverableId: string, newStatus: string) {
+    setUpdatingId(deliverableId);
+    try {
+      const res = await fetch(`/api/deliverables/${deliverableId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        setAllDeliverables((prev) =>
+          prev.map((d) => (d.id === deliverableId ? { ...d, status: newStatus } : d))
+        );
+      }
+    } catch {
+      // Silently fail — user can retry
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
   const getColumnItems = (columnKey: string) => {
     if (columnKey === 'not_started') {
       return allDeliverables.filter((d) => d.status === 'not_started' || d.status === 'blocked');
@@ -92,7 +161,7 @@ export default function KanbanBoardPage() {
           <h1 className="text-2xl font-bold text-text-primary">Kanban Board</h1>
           <p className="text-text-secondary text-sm mt-1">
             <Link href={`/contracts/${contractId}`} className="hover:text-accent-squad transition-colors">
-              {MOCK_CONTRACT.title}
+              {contractTitle}
             </Link>
           </p>
         </div>
@@ -124,10 +193,13 @@ export default function KanbanBoardPage() {
                 {items.map((d) => {
                   const isAgent = d.assignee.includes('(Agent)');
                   const isBlocked = d.status === 'blocked';
+                  const transitions = ALLOWED_TRANSITIONS[d.status] || [];
+                  const isUpdating = updatingId === d.id;
+
                   return (
                     <div
                       key={d.id}
-                      className={`bg-white rounded-lg border border-border p-3 shadow-sm hover:shadow-md transition-shadow cursor-grab ${isAgent ? 'border-l-4 border-l-accent-agent' : ''}`}
+                      className={`bg-white rounded-lg border border-border p-3 shadow-sm hover:shadow-md transition-shadow ${isAgent ? 'border-l-4 border-l-accent-agent' : ''} ${isUpdating ? 'opacity-60' : ''}`}
                     >
                       {/* Title */}
                       <p className="text-sm font-semibold text-text-primary truncate">
@@ -149,6 +221,22 @@ export default function KanbanBoardPage() {
                           {d.format}
                         </span>
                       </div>
+
+                      {/* Status transition buttons */}
+                      {transitions.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {transitions.map((target) => (
+                            <button
+                              key={target}
+                              onClick={() => handleStatusChange(d.id, target)}
+                              disabled={isUpdating}
+                              className="text-[10px] font-medium px-2 py-0.5 rounded bg-bg-secondary text-text-secondary hover:bg-accent-squad/10 hover:text-accent-squad transition-colors disabled:opacity-50"
+                            >
+                              {target.replace(/_/g, ' ')}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Footer: assignee + workstream */}
                       <div className="mt-3 flex items-center justify-between">
