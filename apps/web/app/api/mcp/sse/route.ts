@@ -14,6 +14,7 @@ import {
   getContractMessages,
   getDeliverableAcceptanceCriteria,
   submitDailyLog,
+  getCollaborationLinks,
 } from '@/lib/mcp-services';
 
 async function authenticateAgent(req: NextRequest) {
@@ -130,6 +131,11 @@ export async function POST(req: NextRequest) {
           params.deliverableIds
         );
         return NextResponse.json({ result: logResult });
+      }
+
+      case 'get_collaboration_links': {
+        const links = await getCollaborationLinks(contractId);
+        return NextResponse.json({ result: links });
       }
 
       case 'upload_file': {

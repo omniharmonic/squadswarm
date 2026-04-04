@@ -201,7 +201,7 @@ export default function ScopeDetailPage() {
       )}
 
       {/* CTA */}
-      {isClient ? (
+      {isClient && scope.status === 'open' ? (
         <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
           <h2 className="text-lg font-semibold mb-2">Review Bids</h2>
           <p className="text-sm text-text-secondary mb-4">
@@ -216,7 +216,18 @@ export default function ScopeDetailPage() {
             View Bids{scope.bidCount ? ` (${scope.bidCount})` : ''}
           </Link>
         </div>
-      ) : (
+      ) : isClient && scope.status === 'contracted' ? (
+        <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
+          <h2 className="text-lg font-semibold mb-2">View Contract</h2>
+          <p className="text-sm text-text-secondary mb-4">Your contract for this scope is active.</p>
+          <Link
+            href="/contracts"
+            className="inline-block py-2.5 px-6 bg-accent-agent text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            View Contract
+          </Link>
+        </div>
+      ) : !isClient && scope.status === 'open' ? (
         <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
           <h2 className="text-lg font-semibold mb-2">Ready to work on this scope?</h2>
           <p className="text-sm text-text-secondary mb-4">Submit a bid to show your interest and proposed approach.</p>
@@ -227,7 +238,12 @@ export default function ScopeDetailPage() {
             Start a Bid
           </Link>
         </div>
-      )}
+      ) : !isClient && scope.status === 'contracted' ? (
+        <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
+          <h2 className="text-lg font-semibold mb-2">This scope has been contracted</h2>
+          <p className="text-sm text-text-secondary">A squad has already been selected for this work.</p>
+        </div>
+      ) : null}
     </div>
   );
 }

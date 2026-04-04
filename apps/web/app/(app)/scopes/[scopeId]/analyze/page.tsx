@@ -424,10 +424,16 @@ export default function AIAnalysisPage() {
       {/* Actions */}
       <div className="shrink-0 pt-4 space-y-3">
         {showAutoImprove && (
-          <button onClick={handleAutoImprove}
-            className="w-full py-2.5 px-4 bg-accent-agent text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
-            Auto-improve scope and generate Work Plan
-          </button>
+          <>
+            <button onClick={handleAutoImprove}
+              className="w-full py-2.5 px-4 bg-accent-agent text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+              Auto-improve scope and generate Work Plan
+            </button>
+            <button onClick={() => sendMessage('Skip the sufficiency assessment entirely. Generate a complete Work Plan immediately using your best judgment for any gaps.')}
+              className="w-full py-2.5 px-4 bg-white border border-border text-text-secondary rounded-lg text-sm font-medium hover:bg-bg-secondary transition-colors">
+              Skip Assessment — Generate Work Plan Directly
+            </button>
+          </>
         )}
 
         <div className="flex gap-2">

@@ -17,6 +17,8 @@ export const contracts = pgTable('contracts', {
   totalAmount: numeric('total_amount', { precision: 12, scale: 2 }).notNull(),
   feedbackRoundsTotal: integer('feedback_rounds_total').default(3),
   feedbackRoundsUsed: integer('feedback_rounds_used').default(0),
+  collaborationLinks: jsonb('collaboration_links').$type<Array<{type: string; label: string; url: string; addedBy?: string}>>().default([]),
+  projectContext: text('project_context'),
   disputeSplit: jsonb('dispute_split'),
   smartContractAddress: text('smart_contract_address'),
   status: text('status').default('pending_deposit').notNull(),

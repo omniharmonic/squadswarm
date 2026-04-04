@@ -8,9 +8,13 @@ import { getSession } from '@/lib/auth';
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session.userId) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
 
   try {
     const body = await req.json();
+    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+      return NextResponse.json({ error: 'Squad name is required' }, { status: 400 });
+    }
     const slug = body.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')

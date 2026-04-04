@@ -38,6 +38,14 @@ export default function ClientReviewPage() {
   const [contractTitle, setContractTitle] = useState('');
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [feedbackRoundsTotal, setFeedbackRoundsTotal] = useState(3);
+  const [feedbackRoundsUsed, setFeedbackRoundsUsed] = useState(0);
+
+  // Revision feedback modal state
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
+  const [revisionItemId, setRevisionItemId] = useState<string | null>(null);
+  const [revisionFeedback, setRevisionFeedback] = useState('');
+  const [submittingRevision, setSubmittingRevision] = useState(false);
 
   const fetchDeliverables = useCallback(async () => {
     try {
@@ -54,10 +62,19 @@ export default function ClientReviewPage() {
           // Parse acceptance criteria from the deliverable
           const rawCriteria = d.acceptanceCriteria;
           let criteria: Criterion[] = [];
-          if (Array.isArray(rawCriteria)) {
-            criteria = rawCriteria.map((c: { text?: string; id?: string }, i: number) => ({
+          if (typeof rawCriteria === 'string' && rawCriteria.trim()) {
+            criteria = [{ id: `c-${d.id}-0`, text: rawCriteria, checked: false }];
+          } else if (Array.isArray(rawCriteria)) {
+            criteria = rawCriteria.map((c: unknown, i: number) => ({
               id: `c-${d.id}-${i}`,
-              text: typeof c === 'string' ? c : c.text || String(c),
+              text: typeof c === 'string'
+                ? c
+                : (c && typeof c === 'object'
+                    ? ((c as Record<string, unknown>).description ||
+                       (c as Record<string, unknown>).text ||
+                       (c as Record<string, unknown>).measurableCondition ||
+                       JSON.stringify(c)) as string
+                    : String(c)),
               checked: false,
             }));
           }
@@ -77,11 +94,13 @@ export default function ClientReviewPage() {
 
       setItems(reviewItems);
 
-      // Also fetch contract title
+      // Also fetch contract title and feedback rounds
       const contractRes = await fetch(`/api/contracts/${contractId}`);
       if (contractRes.ok) {
         const contractData = await contractRes.json();
         setContractTitle(contractData.title);
+        setFeedbackRoundsTotal(contractData.feedbackRoundsTotal ?? 3);
+        setFeedbackRoundsUsed(contractData.feedbackRoundsUsed ?? 0);
       }
     } catch {
       // Leave empty on failure
@@ -134,21 +153,42 @@ export default function ClientReviewPage() {
     }
   };
 
-  const handleRequestRevision = async (itemId: string) => {
-    setActioningId(itemId);
+  function openRevisionModal(itemId: string) {
+    setRevisionItemId(itemId);
+    setRevisionFeedback('');
+    setShowRevisionModal(true);
+  }
+
+  const handleRequestRevision = async () => {
+    if (!revisionItemId || !revisionFeedback.trim()) return;
+    setSubmittingRevision(true);
+    setActioningId(revisionItemId);
     try {
-      const res = await fetch(`/api/deliverables/${itemId}/status`, {
+      const res = await fetch(`/api/deliverables/${revisionItemId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'revision_requested' }),
       });
       if (res.ok) {
-        setReviewedIds((prev) => new Set(prev).add(itemId));
+        // Post revision feedback as a message
+        await fetch(`/api/contracts/${contractId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: `**Revision Requested (Round ${feedbackRoundsUsed + 1} of ${feedbackRoundsTotal})**\n\n${revisionFeedback.trim()}`,
+            channelType: 'deliverable',
+            channelId: revisionItemId,
+          }),
+        });
+
+        setFeedbackRoundsUsed((prev) => prev + 1);
+        setReviewedIds((prev) => new Set(prev).add(revisionItemId));
+        setShowRevisionModal(false);
         setTimeout(() => {
-          setItems((prev) => prev.filter((item) => item.id !== itemId));
+          setItems((prev) => prev.filter((item) => item.id !== revisionItemId));
           setReviewedIds((prev) => {
             const next = new Set(prev);
-            next.delete(itemId);
+            next.delete(revisionItemId!);
             return next;
           });
         }, 1500);
@@ -156,6 +196,7 @@ export default function ClientReviewPage() {
     } catch {
       // Silently fail
     } finally {
+      setSubmittingRevision(false);
       setActioningId(null);
     }
   };
@@ -181,11 +222,22 @@ export default function ClientReviewPage() {
               </Link>
             </p>
           </div>
-          <div className="bg-white rounded-lg border border-border px-4 py-2">
-            <span className="text-sm text-text-secondary">
-              <span className="font-semibold text-text-primary">{items.length}</span>
-              {' '}deliverable{items.length !== 1 ? 's' : ''} awaiting review
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="bg-white rounded-lg border border-border px-4 py-2">
+              <span className="text-sm text-text-secondary">
+                <span className="font-semibold text-text-primary">{items.length}</span>
+                {' '}deliverable{items.length !== 1 ? 's' : ''} awaiting review
+              </span>
+            </div>
+            <div className="bg-white rounded-lg border border-border px-4 py-2">
+              <span className="text-sm text-text-secondary">
+                Revision rounds:{' '}
+                <span className={`font-semibold ${feedbackRoundsUsed >= feedbackRoundsTotal ? 'text-error' : 'text-text-primary'}`}>
+                  {feedbackRoundsUsed}
+                </span>
+                {' '}of {feedbackRoundsTotal}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -314,7 +366,7 @@ export default function ClientReviewPage() {
                     {isActioning ? 'Approving...' : 'Approve'}
                   </button>
                   <button
-                    onClick={() => handleRequestRevision(item.id)}
+                    onClick={() => openRevisionModal(item.id)}
                     disabled={isActioning}
                     className="px-5 py-2.5 bg-white border border-warning text-warning text-sm font-medium rounded-lg hover:bg-warning/5 transition-colors disabled:opacity-50"
                   >
@@ -337,6 +389,70 @@ export default function ClientReviewPage() {
           );
         })}
       </div>
+
+      {/* Revision Feedback Modal */}
+      {showRevisionModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/30 z-50"
+            onClick={() => setShowRevisionModal(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl border border-border shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-text-primary mb-1">Request Revision</h3>
+              <p className="text-sm text-text-secondary mb-1">
+                Round {feedbackRoundsUsed + 1} of {feedbackRoundsTotal} — this is your {getOrdinal(feedbackRoundsUsed + 1)} revision request
+              </p>
+
+              {feedbackRoundsUsed + 1 >= feedbackRoundsTotal && (
+                <div className="mb-4 p-3 rounded-lg bg-warning/10 border border-warning/20">
+                  <p className="text-sm font-medium text-warning">
+                    This is your final revision request.
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-4 mt-4">
+                <div>
+                  <label className="text-sm font-medium text-text-primary block mb-1">
+                    Revision Feedback <span className="text-error">*</span>
+                  </label>
+                  <textarea
+                    value={revisionFeedback}
+                    onChange={(e) => setRevisionFeedback(e.target.value)}
+                    placeholder="Describe what needs to be changed..."
+                    rows={5}
+                    className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-warning/30"
+                  />
+                </div>
+
+                <div className="flex gap-2 justify-end pt-2">
+                  <button
+                    onClick={() => setShowRevisionModal(false)}
+                    className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRequestRevision}
+                    disabled={submittingRevision || !revisionFeedback.trim()}
+                    className="px-5 py-2.5 bg-warning text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {submittingRevision ? 'Submitting...' : 'Request Revision'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
+}
+
+function getOrdinal(n: number): string {
+  const suffixes: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' };
+  const v = n % 100;
+  const suffix = (v >= 11 && v <= 13) ? 'th' : (suffixes[v % 10] || 'th');
+  return n + suffix;
 }

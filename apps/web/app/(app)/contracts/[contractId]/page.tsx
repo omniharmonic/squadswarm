@@ -85,18 +85,60 @@ interface Workstream {
   deliverables: Deliverable[];
 }
 
+interface CollaborationLink {
+  type: string;
+  label: string;
+  url: string;
+  addedBy?: string;
+}
+
 interface Contract {
   id: string;
   title: string;
   status: string;
   clientName: string;
   squadName: string;
+  squadId: string;
   totalAmount: string;
   feedbackRoundsTotal: number;
   feedbackRoundsUsed: number;
   startedAt: string;
+  completedAt: string | null;
+  smartContractAddress: string | null;
+  collaborationLinks: Array<{ type: string; label: string; url: string }>;
   workstreams: Workstream[];
 }
+
+interface SquadInfo {
+  paymentMode: string;
+  multisigAddress: string | null;
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
+}
+
+const LINK_ICONS: Record<string, string> = {
+  notion: '\u{1F4DD}',
+  github: '\u{1F4BB}',
+  google_drive: '\u{1F4C1}',
+  figma: '\u{1F3A8}',
+  discord: '\u{1F4AC}',
+  slack: '\u{1F4AC}',
+  linear: '\u{1F4CB}',
+  custom: '\u{1F517}',
+};
+
+const LINK_TYPE_OPTIONS = [
+  { value: 'notion', label: 'Notion' },
+  { value: 'github', label: 'GitHub' },
+  { value: 'google_drive', label: 'Google Drive' },
+  { value: 'figma', label: 'Figma' },
+  { value: 'discord', label: 'Discord' },
+  { value: 'slack', label: 'Slack' },
+  { value: 'linear', label: 'Linear' },
+  { value: 'custom', label: 'Custom' },
+];
 
 interface Dispute {
   id: string;
@@ -110,8 +152,14 @@ export default function ContractOverviewPage() {
   const params = useParams();
   const contractId = params.contractId as string;
   const [contract, setContract] = useState<Contract | null>(null);
+  const [squadInfo, setSquadInfo] = useState<SquadInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [funding, setFunding] = useState(false);
+
+  // Completion state
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState('');
   const [disputeReason, setDisputeReason] = useState('');
   const [raisingDispute, setRaisingDispute] = useState(false);
   const [showDisputeForm, setShowDisputeForm] = useState(false);
@@ -120,6 +168,14 @@ export default function ContractOverviewPage() {
   const [clientPct, setClientPct] = useState(50);
   const [squadPct, setSquadPct] = useState(50);
   const [resolving, setResolving] = useState(false);
+
+  // Collaboration links state
+  const [collabLinks, setCollabLinks] = useState<CollaborationLink[]>([]);
+  const [showAddLink, setShowAddLink] = useState(false);
+  const [newLinkType, setNewLinkType] = useState('notion');
+  const [newLinkLabel, setNewLinkLabel] = useState('');
+  const [newLinkUrl, setNewLinkUrl] = useState('');
+  const [addingLink, setAddingLink] = useState(false);
 
   // Rating state
   const [existingRating, setExistingRating] = useState<Rating | null>(null);
@@ -143,6 +199,61 @@ export default function ContractOverviewPage() {
       // ignore
     }
   }, [contractId]);
+
+  const fetchCollabLinks = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/links`);
+      if (res.ok) {
+        const data = await res.json();
+        setCollabLinks(data.links || []);
+      }
+    } catch {
+      // ignore
+    }
+  }, [contractId]);
+
+  async function handleAddLink() {
+    if (!newLinkLabel.trim() || !newLinkUrl.trim()) return;
+    setAddingLink(true);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/links`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          link: { type: newLinkType, label: newLinkLabel.trim(), url: newLinkUrl.trim() },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCollabLinks(data.links || []);
+        setNewLinkLabel('');
+        setNewLinkUrl('');
+        setNewLinkType('notion');
+        setShowAddLink(false);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setAddingLink(false);
+    }
+  }
+
+  async function handleRemoveLink(url: string) {
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/links`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove', link: { url } }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCollabLinks(data.links || []);
+      }
+    } catch {
+      // silently fail
+    }
+  }
 
   async function handleSubmitRating() {
     if (ratingOverall === 0 || ratingQuality === 0 || ratingComm === 0 || ratingTimeliness === 0) {
@@ -186,25 +297,43 @@ export default function ContractOverviewPage() {
           id: data.id,
           title: data.title,
           status: data.status,
-          clientName: data.clientName,
-          squadName: data.squadName,
-          totalAmount: data.totalAmount,
+          clientName: data.clientName || 'Unknown',
+          squadName: data.squadName || 'Unknown',
+          squadId: data.squadId || '',
+          totalAmount: data.totalAmount || '0',
           feedbackRoundsTotal: data.feedbackRoundsTotal ?? 3,
           feedbackRoundsUsed: data.feedbackRoundsUsed ?? 0,
-          startedAt: data.startedAt || data.createdAt,
+          startedAt: data.startedAt || data.createdAt || '',
+          completedAt: data.completedAt || null,
+          smartContractAddress: data.smartContractAddress || null,
+          collaborationLinks: data.collaborationLinks || [],
           workstreams: (data.workstreams || []).map((ws: Record<string, unknown>) => ({
-            id: ws.id,
-            title: ws.title,
-            status: ws.status || 'not_started',
+            id: ws.id as string,
+            title: ws.title as string,
+            status: (ws.status as string) || 'not_started',
             deliverables: ((ws.deliverables as Record<string, unknown>[]) || []).map((d: Record<string, unknown>) => ({
-              id: d.id,
-              title: d.title,
-              status: d.status || 'not_started',
-              format: d.format || 'document',
-              assignee: d.assignee || 'Unassigned',
+              id: d.id as string,
+              title: d.title as string,
+              status: (d.status as string) || 'not_started',
+              format: (d.format as string) || 'document',
+              assignee: (d.assignee as string) || 'Unassigned',
             })),
           })),
-        });
+        } as Contract);
+
+        // Fetch squad info for payment mode
+        try {
+          const squadRes = await fetch(`/api/squads/${data.squadId}`);
+          if (squadRes.ok) {
+            const squadData = await squadRes.json();
+            setSquadInfo({
+              paymentMode: squadData.paymentMode || 'fiat',
+              multisigAddress: squadData.multisigAddress || null,
+            });
+          }
+        } catch {
+          // ignore
+        }
       }
     } catch {
       // Leave contract as null on failure
@@ -216,8 +345,9 @@ export default function ContractOverviewPage() {
   useEffect(() => {
     fetchContract();
     fetchRating();
+    fetchCollabLinks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractId, fetchRating]);
+  }, [contractId, fetchRating, fetchCollabLinks]);
 
   async function handleFundContract() {
     setFunding(true);
@@ -230,6 +360,25 @@ export default function ContractOverviewPage() {
       // Silently fail for demo
     } finally {
       setFunding(false);
+    }
+  }
+
+  async function handleCompleteContract() {
+    setCompleting(true);
+    setCompleteError('');
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/complete`, { method: 'POST' });
+      if (res.ok) {
+        setShowCompleteConfirm(false);
+        await fetchContract();
+      } else {
+        const err = await res.json();
+        setCompleteError(err.error || 'Failed to complete contract');
+      }
+    } catch {
+      setCompleteError('Network error');
+    } finally {
+      setCompleting(false);
     }
   }
 
@@ -315,6 +464,15 @@ export default function ContractOverviewPage() {
   const totalCount = allDeliverables.length;
   const progressPercent = totalCount > 0 ? Math.round((approvedCount / totalCount) * 100) : 0;
 
+  const allApproved = totalCount > 0 && approvedCount === totalCount;
+  const totalAmount = parseFloat(contract.totalAmount);
+  const upfrontAmount = totalAmount * 0.25;
+  const escrowedAmount = totalAmount * 0.75;
+  const releasedSoFar = totalCount > 0 ? escrowedAmount * (approvedCount / totalCount) : 0;
+  const paymentProgressPercent = totalAmount > 0 ? Math.round(((upfrontAmount + releasedSoFar) / totalAmount) * 100) : 0;
+  const isCrypto = squadInfo?.paymentMode === 'crypto';
+  const escrowAddress = contract.smartContractAddress || squadInfo?.multisigAddress;
+
   const daysActive = contract.startedAt
     ? Math.floor((Date.now() - new Date(contract.startedAt).getTime()) / 86400000)
     : 0;
@@ -325,6 +483,7 @@ export default function ContractOverviewPage() {
     { label: 'Files', href: `/contracts/${contractId}/files` },
     { label: 'Discussion', href: `/contracts/${contractId}/discussion` },
     { label: 'PM Dashboard', href: `/contracts/${contractId}/pm` },
+    { label: 'Context', href: `/contracts/${contractId}/context` },
     { label: 'Client Review', href: `/contracts/${contractId}/review` },
   ];
 
@@ -416,48 +575,172 @@ export default function ContractOverviewPage() {
         </div>
       </div>
 
-      {/* Payment status */}
+      {/* Payment status — enhanced */}
       <div className="bg-white rounded-xl border border-border p-5 mb-6">
         <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-3">Payment Status</h2>
+
         {contract.status === 'pending_deposit' && (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-text-primary font-medium">Awaiting deposit to begin work</p>
-              <p className="text-sm text-text-secondary mt-0.5">
-                Fund ${parseFloat(contract.totalAmount).toLocaleString()} to start work
-              </p>
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-text-primary font-medium">Awaiting deposit to begin work</p>
+                <p className="text-sm text-text-secondary mt-0.5">
+                  Fund {formatCurrency(totalAmount)} to start work
+                </p>
+              </div>
+              {!isCrypto && (
+                <button
+                  onClick={handleFundContract}
+                  disabled={funding}
+                  className="px-5 py-2.5 bg-accent-client text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  {funding ? 'Processing...' : `Fund ${formatCurrency(totalAmount)}`}
+                </button>
+              )}
             </div>
-            <button
-              onClick={handleFundContract}
-              disabled={funding}
-              className="px-5 py-2.5 bg-accent-client text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-              {funding ? 'Processing...' : `Fund $${parseFloat(contract.totalAmount).toLocaleString()}`}
-            </button>
+            {isCrypto && (
+              <div className="bg-accent-agent/5 rounded-lg p-4 border border-accent-agent/20">
+                <p className="text-sm font-medium text-accent-agent mb-2">Fund with USDC on Base</p>
+                <p className="text-sm text-text-secondary mb-2">
+                  Send {formatCurrency(totalAmount)} USDC to the escrow contract:
+                </p>
+                {escrowAddress ? (
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs font-mono bg-white px-3 py-2 rounded border border-border text-text-primary flex-1 truncate">
+                      {escrowAddress}
+                    </code>
+                    <a
+                      href={`https://basescan.org/address/${escrowAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-accent-agent hover:underline whitespace-nowrap"
+                    >
+                      View on Basescan
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-warning">No escrow address configured. Contact the squad admin.</p>
+                )}
+                <button
+                  onClick={handleFundContract}
+                  disabled={funding}
+                  className="mt-3 px-5 py-2.5 bg-accent-agent text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  {funding ? 'Confirming...' : 'Confirm Deposit (Stub)'}
+                </button>
+              </div>
+            )}
           </div>
         )}
+
         {contract.status === 'active' && (
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              Funded
-            </span>
-            <span className="text-text-primary font-medium">
-              ${parseFloat(contract.totalAmount).toLocaleString()} deposited
-            </span>
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm font-medium">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Funded
+              </span>
+              <span className="text-text-primary font-medium">
+                {formatCurrency(totalAmount)} deposited
+              </span>
+            </div>
+
+            {/* Payment breakdown */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="bg-bg-primary rounded-lg p-3">
+                <p className="text-xs text-text-secondary">Total</p>
+                <p className="text-sm font-bold text-text-primary">{formatCurrency(totalAmount)}</p>
+              </div>
+              <div className="bg-bg-primary rounded-lg p-3">
+                <p className="text-xs text-text-secondary">Upfront (25%)</p>
+                <p className="text-sm font-bold text-success">{formatCurrency(upfrontAmount)}</p>
+              </div>
+              <div className="bg-bg-primary rounded-lg p-3">
+                <p className="text-xs text-text-secondary">Escrowed (75%)</p>
+                <p className="text-sm font-bold text-escrow">{formatCurrency(escrowedAmount)}</p>
+              </div>
+              <div className="bg-bg-primary rounded-lg p-3">
+                <p className="text-xs text-text-secondary">Released</p>
+                <p className="text-sm font-bold text-accent-agent">{formatCurrency(releasedSoFar)}</p>
+              </div>
+            </div>
+
+            {/* Payment release progress */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-text-secondary">Payment Release Progress</span>
+                <span className="font-medium text-text-primary">{paymentProgressPercent}%</span>
+              </div>
+              <div className="w-full h-2 bg-bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-accent-agent rounded-full transition-all"
+                  style={{ width: `${paymentProgressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {isCrypto ? (
+              <div className="flex items-center gap-2 text-xs text-text-secondary">
+                <svg className="w-4 h-4 text-accent-agent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+                <span>Escrowed on Base</span>
+                {escrowAddress && (
+                  <a
+                    href={`https://basescan.org/address/${escrowAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-agent hover:underline"
+                  >
+                    {escrowAddress.slice(0, 6)}...{escrowAddress.slice(-4)}
+                  </a>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-text-secondary flex items-center gap-1.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                </svg>
+                Payments managed via Stripe
+              </p>
+            )}
           </div>
         )}
+
         {contract.status === 'completed' && (
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent-agent/10 text-accent-agent rounded-full text-sm font-medium">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              Completed &amp; Paid
-            </span>
-            <span className="text-text-primary font-medium">
-              ${parseFloat(contract.totalAmount).toLocaleString()} released
-            </span>
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent-agent/10 text-accent-agent rounded-full text-sm font-medium">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                All Funds Released
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+              <div className="bg-bg-primary rounded-lg p-3">
+                <p className="text-xs text-text-secondary">Total Paid</p>
+                <p className="text-sm font-bold text-success">{formatCurrency(totalAmount)}</p>
+              </div>
+              <div className="bg-bg-primary rounded-lg p-3">
+                <p className="text-xs text-text-secondary">Payment Method</p>
+                <p className="text-sm font-bold text-text-primary capitalize">{isCrypto ? 'USDC on Base' : 'Stripe'}</p>
+              </div>
+              <div className="bg-bg-primary rounded-lg p-3">
+                <p className="text-xs text-text-secondary">Completed</p>
+                <p className="text-sm font-bold text-text-primary">
+                  {contract.completedAt
+                    ? new Date(contract.completedAt).toLocaleDateString()
+                    : 'N/A'}
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full h-2 bg-bg-secondary rounded-full overflow-hidden">
+              <div className="h-full bg-success rounded-full w-full" />
+            </div>
           </div>
         )}
+
         {contract.status === 'disputed' && (
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm font-medium">
@@ -465,8 +748,159 @@ export default function ContractOverviewPage() {
               Disputed
             </span>
             <span className="text-text-primary font-medium">
-              ${parseFloat(contract.totalAmount).toLocaleString()} held in escrow
+              {formatCurrency(totalAmount)} held in escrow
             </span>
+          </div>
+        )}
+      </div>
+
+      {/* Complete Contract — shown when all deliverables approved and contract is active */}
+      {contract.status === 'active' && allApproved && totalCount > 0 && (
+        <div className="bg-success/5 rounded-xl border-2 border-success/30 p-5 mb-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-success uppercase tracking-wide mb-1">Ready to Complete</h2>
+              <p className="text-text-primary font-medium">
+                All {totalCount} deliverables approved. Releasing {formatCurrency(totalAmount)} to {contract.squadName}.
+              </p>
+              {isCrypto && (
+                <p className="text-xs text-text-secondary mt-1">
+                  For crypto payments, the on-chain release will be triggered after confirmation.
+                </p>
+              )}
+            </div>
+            {!showCompleteConfirm ? (
+              <button
+                onClick={() => setShowCompleteConfirm(true)}
+                className="px-5 py-2.5 bg-success text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shrink-0"
+              >
+                Complete Contract
+              </button>
+            ) : (
+              <div className="shrink-0 text-right space-y-2">
+                <p className="text-sm text-text-secondary">Are you sure? This will release all escrowed funds.</p>
+                {completeError && <p className="text-sm text-error">{completeError}</p>}
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => { setShowCompleteConfirm(false); setCompleteError(''); }}
+                    className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCompleteContract}
+                    disabled={completing}
+                    className="px-5 py-2.5 bg-success text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {completing ? 'Completing...' : 'Confirm Completion'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Collaboration Spaces */}
+      <div className="bg-white rounded-xl border border-border p-5 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+            Collaboration Spaces
+          </h2>
+          <button
+            onClick={() => setShowAddLink(!showAddLink)}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-accent-squad/10 text-accent-squad hover:bg-accent-squad/20 transition-colors"
+          >
+            {showAddLink ? 'Cancel' : '+ Add Link'}
+          </button>
+        </div>
+
+        {collabLinks.length === 0 && !showAddLink && (
+          <p className="text-sm text-text-secondary">
+            No collaboration spaces linked yet. Add tools your team uses.
+          </p>
+        )}
+
+        {collabLinks.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+            {collabLinks.map((link, i) => (
+              <div
+                key={`${link.url}-${i}`}
+                className="flex items-center gap-3 p-3 rounded-lg bg-bg-primary group"
+              >
+                <span className="text-lg shrink-0">{LINK_ICONS[link.type] || LINK_ICONS.custom}</span>
+                <div className="flex-1 min-w-0">
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-text-primary hover:text-accent-squad transition-colors truncate block"
+                  >
+                    {link.label}
+                  </a>
+                  <span className="text-[10px] text-text-secondary capitalize">{link.type.replace('_', ' ')}</span>
+                </div>
+                <button
+                  onClick={() => handleRemoveLink(link.url)}
+                  className="text-text-secondary hover:text-error transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                  title="Remove link"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showAddLink && (
+          <div className="mt-3 space-y-3 p-4 rounded-lg bg-bg-primary border border-border">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-text-secondary mb-1 block">Type</label>
+                <select
+                  value={newLinkType}
+                  onChange={(e) => setNewLinkType(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-squad/30"
+                >
+                  {LINK_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {LINK_ICONS[opt.value]} {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-text-secondary mb-1 block">Label</label>
+                <input
+                  type="text"
+                  value={newLinkLabel}
+                  onChange={(e) => setNewLinkLabel(e.target.value)}
+                  placeholder="e.g. Project Docs"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-squad/30"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-text-secondary mb-1 block">URL</label>
+                <input
+                  type="url"
+                  value={newLinkUrl}
+                  onChange={(e) => setNewLinkUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-squad/30"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleAddLink}
+                disabled={addingLink || !newLinkLabel.trim() || !newLinkUrl.trim()}
+                className="px-4 py-2 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {addingLink ? 'Adding...' : 'Add Link'}
+              </button>
+            </div>
           </div>
         )}
       </div>

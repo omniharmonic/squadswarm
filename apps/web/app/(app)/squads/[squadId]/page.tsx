@@ -27,8 +27,14 @@ interface SquadDetail {
   missionStatement: string | null;
   governanceModel: { model: string } | null;
   trustScore: string;
+  multisigAddress: string | null;
+  paymentMode: string;
   members: Member[];
   agents: Agent[];
+}
+
+function isValidEthAddress(addr: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(addr);
 }
 
 export default function SquadProfilePage() {
@@ -36,13 +42,85 @@ export default function SquadProfilePage() {
   const [squad, setSquad] = useState<SquadDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Multisig address editing
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressInput, setAddressInput] = useState('');
+  const [addressError, setAddressError] = useState('');
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  // Check if the current user is an admin
+  const [isAdmin, setIsAdmin] = useState(false);
+
   useEffect(() => {
-    fetch(`/api/squads/${params.squadId}`)
-      .then((res) => res.json())
-      .then((data) => { if (!data.error) setSquad(data); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function fetchSquad() {
+      try {
+        const res = await fetch(`/api/squads/${params.squadId}`);
+        const data = await res.json();
+        if (!data.error) {
+          setSquad(data);
+          // Check if current user is admin via members
+          const membersRes = await fetch(`/api/squads/${params.squadId}/members`);
+          if (membersRes.ok) {
+            const members = await membersRes.json();
+            // We get the current user from auth context, but for simplicity
+            // we check if any admin member exists and match by session
+            // The squad detail page already renders members, so we set this from members data
+            setSquad((prev) => prev ? {
+              ...prev,
+              members: members.map((m: { userId: string; userName: string; userEmail: string; role: string }) => ({
+                userId: m.userId,
+                displayName: m.userName,
+                email: m.userEmail,
+                role: m.role,
+              })),
+            } : prev);
+            // Check admin status via a lightweight approach: try PATCH with empty body
+            // Actually, we'll use a simpler signal: fetch /api/auth/me and compare
+            const authRes = await fetch('/api/auth/me');
+            if (authRes.ok) {
+              const authData = await authRes.json();
+              const currentMember = members.find((m: { userId: string }) => m.userId === authData.userId);
+              setIsAdmin(currentMember?.role === 'admin');
+            }
+          }
+        }
+      } catch {
+        // leave squad as null
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSquad();
   }, [params.squadId]);
+
+  async function handleSaveAddress() {
+    const trimmed = addressInput.trim();
+    if (trimmed && !isValidEthAddress(trimmed)) {
+      setAddressError('Invalid address. Must start with 0x and be 42 characters.');
+      return;
+    }
+    setSavingAddress(true);
+    setAddressError('');
+    try {
+      const res = await fetch(`/api/squads/${params.squadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ multisigAddress: trimmed || null }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSquad((prev) => prev ? { ...prev, multisigAddress: updated.multisigAddress } : prev);
+        setEditingAddress(false);
+      } else {
+        const err = await res.json();
+        setAddressError(err.error || 'Failed to save');
+      }
+    } catch {
+      setAddressError('Network error');
+    } finally {
+      setSavingAddress(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -80,7 +158,7 @@ export default function SquadProfilePage() {
             {squad.bio && <p className="text-text-secondary mt-1">{squad.bio}</p>}
             {squad.missionStatement && (
               <p className="text-sm text-text-secondary mt-2 italic">
-                "{squad.missionStatement}"
+                &ldquo;{squad.missionStatement}&rdquo;
               </p>
             )}
             <div className="flex items-center gap-4 mt-3 text-sm">
@@ -101,6 +179,83 @@ export default function SquadProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Payment Address */}
+      <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Payment Address</h2>
+          {isAdmin && !editingAddress && (
+            <button
+              onClick={() => {
+                setAddressInput(squad.multisigAddress || '');
+                setEditingAddress(true);
+                setAddressError('');
+              }}
+              className="text-sm text-accent-squad hover:underline"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+
+        {editingAddress ? (
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-text-secondary block mb-1">Multisig Wallet Address (Ethereum)</label>
+              <input
+                type="text"
+                value={addressInput}
+                onChange={(e) => { setAddressInput(e.target.value); setAddressError(''); }}
+                placeholder="0x..."
+                className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-squad/40"
+              />
+              {addressError && <p className="text-sm text-error mt-1">{addressError}</p>}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setEditingAddress(false); setAddressError(''); }}
+                className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAddress}
+                disabled={savingAddress}
+                className="px-4 py-2 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {savingAddress ? 'Saving...' : 'Save Address'}
+              </button>
+            </div>
+          </div>
+        ) : squad.multisigAddress ? (
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-escrow/10 rounded-lg flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-escrow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-mono text-text-primary truncate">{squad.multisigAddress}</p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                {squad.paymentMode === 'crypto' ? 'USDC on Base' : 'Multisig wallet'}{' '}
+                <a
+                  href={`https://basescan.org/address/${squad.multisigAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-agent hover:underline"
+                >
+                  View on Basescan
+                </a>
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-text-secondary">
+            No payment address configured.
+            {isAdmin && ' Click Edit to add a multisig wallet address.'}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

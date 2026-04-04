@@ -18,3 +18,5 @@ export {
 } from './eas';
 export type { AttestationData, AttestationResult } from './eas';
 export * from './escrow';
+export { computeTrustScores, buildEdgesFromContracts } from './trust-graph';
+export type { TrustEdge, TrustScore, TrustGraphConfig } from './trust-graph';

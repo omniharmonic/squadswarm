@@ -109,6 +109,14 @@ export async function getDeliverableAcceptanceCriteria(deliverableId: string) {
   };
 }
 
+export async function getCollaborationLinks(contractId: string) {
+  const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  return {
+    links: (contract?.collaborationLinks as Array<{type: string; label: string; url: string}>) || [],
+    projectContext: contract?.projectContext || null,
+  };
+}
+
 export async function submitDailyLog(
   contractId: string,
   agentId: string,

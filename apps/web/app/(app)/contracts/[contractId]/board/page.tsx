@@ -85,6 +85,13 @@ export default function KanbanBoardPage() {
   const [sendingComment, setSendingComment] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Submission modal state
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [submitDeliverableId, setSubmitDeliverableId] = useState<string | null>(null);
+  const [submitNotes, setSubmitNotes] = useState('');
+  const [submitConfirmed, setSubmitConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
   // Fetch current user session
   useEffect(() => {
     fetch('/api/auth/session')
@@ -227,6 +234,52 @@ export default function KanbanBoardPage() {
     }
   }
 
+  function openSubmitModal(deliverableId: string) {
+    setSubmitDeliverableId(deliverableId);
+    setSubmitNotes('');
+    setSubmitConfirmed(false);
+    setShowSubmitModal(true);
+  }
+
+  async function handleSubmitForReview() {
+    if (!submitDeliverableId || !submitConfirmed) return;
+    setSubmitting(true);
+    try {
+      // Update status to in_review
+      const res = await fetch(`/api/deliverables/${submitDeliverableId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in_review' }),
+      });
+      if (res.ok) {
+        // Post submission notes as a message
+        if (submitNotes.trim()) {
+          await fetch(`/api/contracts/${contractId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: `**Deliverable submitted for review**\n\n${submitNotes.trim()}`,
+              channelType: 'deliverable',
+              channelId: submitDeliverableId,
+            }),
+          });
+        }
+
+        setAllDeliverables((prev) =>
+          prev.map((d) => (d.id === submitDeliverableId ? { ...d, status: 'in_review' } : d))
+        );
+        if (selectedDeliverable?.id === submitDeliverableId) {
+          setSelectedDeliverable((prev) => prev ? { ...prev, status: 'in_review' } : null);
+        }
+        setShowSubmitModal(false);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const getColumnItems = (columnKey: string) => {
     if (columnKey === 'not_started') {
       return allDeliverables.filter((d) => d.status === 'not_started' || d.status === 'blocked');
@@ -358,7 +411,7 @@ export default function KanbanBoardPage() {
                           {transitions.map((target) => (
                             <button
                               key={target}
-                              onClick={() => handleStatusChange(d.id, target)}
+                              onClick={() => target === 'in_review' ? openSubmitModal(d.id) : handleStatusChange(d.id, target)}
                               disabled={isUpdating}
                               className="text-[10px] font-medium px-2 py-0.5 rounded bg-bg-secondary text-text-secondary hover:bg-accent-squad/10 hover:text-accent-squad transition-colors disabled:opacity-50"
                             >
@@ -527,7 +580,7 @@ export default function KanbanBoardPage() {
                       {transitions.map((target) => (
                         <button
                           key={target}
-                          onClick={() => handleStatusChange(selectedDeliverable.id, target)}
+                          onClick={() => target === 'in_review' ? openSubmitModal(selectedDeliverable.id) : handleStatusChange(selectedDeliverable.id, target)}
                           disabled={updatingId === selectedDeliverable.id}
                           className="text-sm font-medium px-4 py-2 rounded-lg bg-bg-secondary text-text-secondary hover:bg-accent-squad/10 hover:text-accent-squad transition-colors disabled:opacity-50"
                         >
@@ -584,6 +637,67 @@ export default function KanbanBoardPage() {
                     className="px-4 py-2 bg-accent-squad text-white text-sm font-medium rounded-lg hover:bg-accent-squad/90 transition-colors disabled:opacity-50"
                   >
                     Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Submission Modal */}
+      {showSubmitModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/30 z-50"
+            onClick={() => setShowSubmitModal(false)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl border border-border shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-text-primary mb-1">Submit for Review</h3>
+              <p className="text-sm text-text-secondary mb-4">
+                This will move the deliverable to &quot;In Review&quot; for client approval.
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-text-primary block mb-1">
+                    Submission Notes
+                  </label>
+                  <textarea
+                    value={submitNotes}
+                    onChange={(e) => setSubmitNotes(e.target.value)}
+                    placeholder="Describe what was completed, any notes for the reviewer..."
+                    rows={4}
+                    className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-squad/30"
+                  />
+                </div>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={submitConfirmed}
+                    onChange={(e) => setSubmitConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-border text-accent-squad focus:ring-accent-squad/30"
+                  />
+                  <span className="text-sm text-text-primary">
+                    I confirm this deliverable meets the acceptance criteria
+                  </span>
+                </label>
+
+                <div className="flex gap-2 justify-end pt-2">
+                  <button
+                    onClick={() => setShowSubmitModal(false)}
+                    className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmitForReview}
+                    disabled={submitting || !submitConfirmed}
+                    className="px-5 py-2.5 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit for Review'}
                   </button>
                 </div>
               </div>

@@ -8,6 +8,13 @@
       "when": 1775255378946,
       "tag": "0000_typical_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775330150173,
+      "tag": "0001_narrow_meggan",
+      "breakpoints": true
     }
   ]
 }

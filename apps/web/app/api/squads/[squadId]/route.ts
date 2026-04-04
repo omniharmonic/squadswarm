@@ -89,6 +89,18 @@ export async function PATCH(
     if (body.revenueSplitDefault !== undefined) allowedFields.revenueSplitDefault = body.revenueSplitDefault;
     if (body.paymentMode !== undefined) allowedFields.paymentMode = body.paymentMode;
     if (body.avatarUrl !== undefined) allowedFields.avatarUrl = body.avatarUrl;
+    if (body.multisigAddress !== undefined) {
+      if (body.multisigAddress !== null && body.multisigAddress !== '') {
+        const addr = String(body.multisigAddress);
+        if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+          return NextResponse.json({ error: 'Invalid Ethereum address. Must start with 0x and be 42 characters.' }, { status: 400 });
+        }
+        allowedFields.multisigAddress = addr;
+      } else {
+        allowedFields.multisigAddress = null;
+      }
+    }
+    if (body.chainId !== undefined) allowedFields.chainId = body.chainId;
 
     if (Object.keys(allowedFields).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });

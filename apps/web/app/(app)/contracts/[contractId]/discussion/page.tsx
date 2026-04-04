@@ -11,10 +11,18 @@ interface Message {
   content: string;
   timestamp: string;
   channel: string;
+  channelId?: string;
 }
 
-const CHANNELS = [
-  { id: 'general', label: 'General' },
+interface ChannelDef {
+  id: string;
+  label: string;
+  type: 'general' | 'workstream';
+  channelId?: string;
+}
+
+const DEFAULT_CHANNELS: ChannelDef[] = [
+  { id: 'general', label: 'General', type: 'general' },
 ];
 
 function getInitials(name: string) {
@@ -63,6 +71,7 @@ function renderContent(content: string) {
 export default function DiscussionPage() {
   const params = useParams();
   const contractId = params.contractId as string;
+  const [channels, setChannels] = useState<ChannelDef[]>(DEFAULT_CHANNELS);
   const [activeChannel, setActiveChannel] = useState('general');
   const [messageText, setMessageText] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -74,16 +83,36 @@ export default function DiscussionPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  // Fetch contract data and build workstream channels
   useEffect(() => {
     fetch(`/api/contracts/${contractId}`)
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setContractTitle(data.title); })
+      .then((data) => {
+        if (data) {
+          setContractTitle(data.title);
+          const wsChannels: ChannelDef[] = (data.workstreams || []).map((ws: { id: string; title: string }) => ({
+            id: `ws-${ws.id}`,
+            label: ws.title,
+            type: 'workstream' as const,
+            channelId: ws.id,
+          }));
+          setChannels([...DEFAULT_CHANNELS, ...wsChannels]);
+        }
+      })
       .catch(() => {});
   }, [contractId]);
 
-  // Fetch messages on mount and when channel changes
+  // Fetch messages when channel changes
   useEffect(() => {
-    fetch(`/api/contracts/${contractId}/messages`)
+    const activeChDef = channels.find((c) => c.id === activeChannel);
+    let url = `/api/contracts/${contractId}/messages`;
+    if (activeChDef?.type === 'workstream' && activeChDef.channelId) {
+      url += `?channelType=workstream&channelId=${activeChDef.channelId}`;
+    } else {
+      url += `?channelType=general`;
+    }
+
+    fetch(url)
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
         if (data && data.messages) {
@@ -94,12 +123,13 @@ export default function DiscussionPage() {
             content: msg.content as string,
             timestamp: msg.createdAt as string,
             channel: msg.channelType as string,
+            channelId: msg.channelId as string | undefined,
           }));
           setMessages(mapped);
         }
       })
       .catch(() => {});
-  }, [contractId]);
+  }, [contractId, activeChannel, channels]);
 
   // Auto-scroll when messages change
   useEffect(() => {
@@ -110,11 +140,14 @@ export default function DiscussionPage() {
     const text = messageText.trim();
     if (!text || sending) return;
     setSending(true);
+    const activeChDef = channels.find((c) => c.id === activeChannel);
+    const channelType = activeChDef?.type === 'workstream' ? 'workstream' : 'general';
+    const channelId = activeChDef?.channelId || undefined;
     try {
       const res = await fetch(`/api/contracts/${contractId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelType: activeChannel, content: text }),
+        body: JSON.stringify({ channelType, channelId, content: text }),
       });
       if (res.ok) {
         const newMsg = await res.json();
@@ -145,7 +178,7 @@ export default function DiscussionPage() {
     }
   };
 
-  const filteredMessages = messages.filter((m) => m.channel === activeChannel);
+  const filteredMessages = messages;
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -166,7 +199,7 @@ export default function DiscussionPage() {
             Channels
           </h3>
           <nav className="space-y-0.5">
-            {CHANNELS.map((ch) => (
+            {channels.map((ch) => (
               <button
                 key={ch.id}
                 onClick={() => setActiveChannel(ch.id)}
@@ -187,7 +220,7 @@ export default function DiscussionPage() {
           {/* Channel header */}
           <div className="px-5 py-3 border-b border-border shrink-0">
             <h2 className="font-semibold text-text-primary">
-              # {CHANNELS.find((c) => c.id === activeChannel)?.label}
+              # {channels.find((c) => c.id === activeChannel)?.label}
             </h2>
           </div>
 
@@ -248,7 +281,7 @@ export default function DiscussionPage() {
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={`Message #${CHANNELS.find((c) => c.id === activeChannel)?.label}...`}
+                placeholder={`Message #${channels.find((c) => c.id === activeChannel)?.label}...`}
                 className="flex-1 px-4 py-2.5 rounded-lg border border-border bg-bg-primary text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent-squad/30 focus:border-accent-squad"
               />
               <button

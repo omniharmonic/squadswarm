@@ -29,6 +29,23 @@ interface ActivityItem {
   isAgent: boolean;
 }
 
+const actionLabelMap: Record<string, string> = {
+  deliverable_approved: 'Deliverable approved',
+  deliverable_status_changed: 'Status updated',
+  workstream_completed: 'Workstream completed',
+  contract_rated: 'Contract rated',
+  deliverable_assigned: 'Work claimed',
+  deliverable_submitted: 'Deliverable submitted',
+  contract_created: 'Contract created',
+  bid_accepted: 'Bid accepted',
+  bid_submitted: 'Bid submitted',
+  scope_published: 'Scope published',
+};
+
+function formatActionLabel(action: string): string {
+  return actionLabelMap[action] || action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 const proposalStatusColors: Record<string, string> = {
   draft: 'bg-bg-secondary text-text-secondary',
   analyzing: 'bg-accent-agent/10 text-accent-agent',
@@ -130,14 +147,19 @@ export default function DashboardPage() {
           .then((activities: Array<{ action: string; timestamp: string; isAgent?: boolean }>) => {
             const mapped: ActivityItem[] = activities.map((a) => {
               const date = new Date(a.timestamp);
-              const now = new Date();
-              const diffMs = now.getTime() - date.getTime();
-              const diffMins = Math.floor(diffMs / 60000);
               let time: string;
-              if (diffMins < 60) time = `${diffMins}m ago`;
-              else if (diffMins < 1440) time = `${Math.floor(diffMins / 60)}h ago`;
-              else time = `${Math.floor(diffMins / 1440)}d ago`;
-              return { action: a.action, time, isAgent: a.isAgent ?? false };
+              if (isNaN(date.getTime())) {
+                time = 'recently';
+              } else {
+                const now = new Date();
+                const diffMs = now.getTime() - date.getTime();
+                const diffMins = Math.floor(diffMs / 60000);
+                if (diffMins < 1) time = 'just now';
+                else if (diffMins < 60) time = `${diffMins}m ago`;
+                else if (diffMins < 1440) time = `${Math.floor(diffMins / 60)}h ago`;
+                else time = `${Math.floor(diffMins / 1440)}d ago`;
+              }
+              return { action: formatActionLabel(a.action), time, isAgent: a.isAgent ?? false };
             });
             setRecentActivity(mapped);
           });
