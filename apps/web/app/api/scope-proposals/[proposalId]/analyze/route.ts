@@ -10,66 +10,28 @@ import { ROLE_TAXONOMY, FORMAT_TAXONOMY } from '@squadswarm/shared';
 
 const SYSTEM_PROMPT = `You are the SquadSwarm Scope Analyst — a helpful, conversational AI that helps clients refine their scope proposals into structured work plans.
 
-## How you work
-
 You have TWO modes:
 
-**Conversational mode** (default): Talk naturally with the client. Answer their questions, discuss the scope, suggest improvements, and help them think through their project. Use markdown formatting.
+**Conversational mode** (default): Talk naturally with the client.
 
-**Structured output mode**: When specifically asked to "analyze", "assess", or "generate a work plan", output a JSON block wrapped in \`\`\`json fences.
+**Structured output mode**: When asked to "analyze", "assess", or "generate a work plan", output a JSON block wrapped in \`\`\`json fences.
 
-## Structured output formats
-
-When doing an initial assessment:
+When doing an initial assessment, output:
 \`\`\`json
 {"type":"sufficiency_assessment","dimensions":[{"dimension":"Outcome Clarity","score":80,"feedback":"...","questions":["..."]}],"overallScore":75,"isReady":false}
 \`\`\`
 
-When generating a work plan (only when the scope is sufficiently detailed OR when asked to auto-improve):
+When generating a work plan:
 \`\`\`json
 {"type":"work_plan","summary":"...","workstreams":[{"title":"...","description":"...","orderIndex":0,"dependencies":[],"deliverables":[{"title":"...","description":"...","format":"codebase","acceptanceCriteria":[{"description":"...","measurableCondition":"..."}],"estimatedEffortHours":8,"requiredSkills":["..."],"suggestedRole":"..."}]}],"estimatedTotalHours":40,"suggestedTimelineDays":14,"roles":[{"title":"...","description":"...","isRequired":true}]}
 \`\`\`
 
-## Rules
-- On first analysis: assess sufficiency. If ALL dimensions >= 60, generate a work plan directly. If not, output the assessment and explain what's missing conversationally.
-- NEVER output both an assessment AND a work plan in the same response. Pick ONE.
-- When the user asks questions or provides information, respond conversationally. Only output JSON when doing a formal assessment or generating a work plan.
-- CRITICAL: When asked to "auto-improve", "fill gaps", or "generate a work plan" — you MUST respond with a work_plan JSON block. Make reasonable assumptions for any missing details. Do NOT output another sufficiency_assessment. The user is asking you to move forward.
+Rules:
+- On first analysis: assess sufficiency. If ALL dimensions >= 60, generate a work plan directly.
+- NEVER output both an assessment AND a work plan in the same response.
+- CRITICAL: When asked to "auto-improve" or "generate a work plan" — you MUST respond with a work_plan JSON block. Do NOT output another sufficiency_assessment.
 - Role taxonomy: ${ROLE_TAXONOMY.join(', ')}
 - Format taxonomy: ${FORMAT_TAXONOMY.join(', ')}`;
-
-/** Extract all JSON objects from text, handling ```json fences and bare JSON */
-function extractJson(text: string): Record<string, unknown> | null {
-  // Try ```json fences first (greedy to get the largest block)
-  const fenceMatches = [...text.matchAll(/```json\s*([\s\S]*?)```/g)];
-  for (const match of fenceMatches.reverse()) {
-    // Try last fence first (most likely to be the final answer)
-    try {
-      const parsed = JSON.parse(match[1]!.trim());
-      if (parsed.type === 'work_plan' || parsed.type === 'sufficiency_assessment') return parsed;
-    } catch { /* try next */ }
-  }
-
-  // Try bare JSON (brace matching for the LAST top-level object)
-  let depth = 0;
-  let lastStart = -1;
-  let lastEnd = -1;
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '{') { if (depth === 0) lastStart = i; depth++; }
-    else if (text[i] === '}') {
-      depth--;
-      if (depth === 0 && lastStart >= 0) { lastEnd = i; }
-    }
-  }
-  if (lastStart >= 0 && lastEnd > lastStart) {
-    try {
-      const parsed = JSON.parse(text.slice(lastStart, lastEnd + 1));
-      if (parsed.type === 'work_plan' || parsed.type === 'sufficiency_assessment') return parsed;
-    } catch { /* skip */ }
-  }
-
-  return null;
-}
 
 export async function POST(
   req: NextRequest,
@@ -125,7 +87,6 @@ ${documents.length > 0 ? '**Attached Documents:**\n' + documents.map((d) => `- $
     messages = [{ role: 'user' as const, content: scopeContext }];
   }
 
-  // Set to analyzing
   await db
     .update(scopeProposals)
     .set({ status: 'analyzing', updatedAt: new Date() })
@@ -136,77 +97,104 @@ ${documents.length > 0 ? '**Attached Documents:**\n' + documents.map((d) => `- $
     async start(controller) {
       try {
         const client = new Anthropic();
-        const stream = client.messages.stream({
+
+        // Use non-streaming to get the complete response, then send as SSE
+        // This avoids the streaming race condition where on('end') fires
+        // before all text is accumulated
+        const response = await client.messages.create({
           model: 'claude-3-haiku-20240307',
           max_tokens: 4096,
           system: SYSTEM_PROMPT,
           messages,
         });
 
-        let fullText = '';
+        // Extract full text
+        const fullText = response.content
+          .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+          .map((block) => block.text)
+          .join('');
 
-        stream.on('text', (text) => {
-          fullText += text;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'text_delta', text })}\n\n`));
-        });
+        // Send the text as chunked SSE events (simulating streaming for the UI)
+        const chunkSize = 50;
+        for (let i = 0; i < fullText.length; i += chunkSize) {
+          const chunk = fullText.slice(i, i + chunkSize);
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: 'text_delta', text: chunk })}\n\n`),
+          );
+        }
 
-        stream.on('error', (error) => {
-          console.error('Stream error:', error);
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: String(error) })}\n\n`));
-          // Reset status on error
-          db.update(scopeProposals)
-            .set({ status: 'needs_info', updatedAt: new Date() })
-            .where(eq(scopeProposals.id, proposalId))
-            .catch(console.error);
-          controller.close();
-        });
+        // Extract JSON from the complete response
+        let jsonResult: Record<string, unknown> | null = null;
 
-        stream.on('end', () => {
-          // Extract JSON result
-          const jsonResult = extractJson(fullText);
-          const resultType = jsonResult?.type as string | undefined;
-          const isWorkPlan = resultType === 'work_plan';
-          const isReadyAssessment = resultType === 'sufficiency_assessment' && jsonResult?.isReady === true;
-          const isReady = isWorkPlan || isReadyAssessment;
-          const newStatus = isReady ? 'ready' : 'needs_info';
+        // Try fenced JSON
+        const fenceMatches = [...fullText.matchAll(/```json\s*([\s\S]*?)```/g)];
+        for (const match of fenceMatches.reverse()) {
+          try {
+            const parsed = JSON.parse(match[1]!.trim());
+            if (parsed.type === 'work_plan' || parsed.type === 'sufficiency_assessment') {
+              jsonResult = parsed;
+              break;
+            }
+          } catch { /* next */ }
+        }
 
-          console.log(`[Analyze] proposalId=${proposalId} resultType=${resultType} isReady=${isReady} newStatus=${newStatus} jsonFound=${!!jsonResult} textLength=${fullText.length}`);
+        // Try bare JSON with brace matching
+        if (!jsonResult) {
+          let depth = 0, start = -1, end = -1;
+          for (let i = fullText.length - 1; i >= 0; i--) {
+            if (fullText[i] === '}') { if (depth === 0) end = i; depth++; }
+            else if (fullText[i] === '{') {
+              depth--;
+              if (depth === 0 && end >= 0) { start = i; break; }
+            }
+          }
+          if (start >= 0 && end > start) {
+            try {
+              const parsed = JSON.parse(fullText.slice(start, end + 1));
+              if (parsed.type === 'work_plan' || parsed.type === 'sufficiency_assessment') {
+                jsonResult = parsed;
+              }
+            } catch { /* skip */ }
+          }
+        }
 
-          // Send done event
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+        const resultType = jsonResult?.type as string | undefined;
+        const isWorkPlan = resultType === 'work_plan';
+        const isReadyAssessment = resultType === 'sufficiency_assessment' && jsonResult?.isReady === true;
+        const isReady = isWorkPlan || isReadyAssessment;
+        const newStatus = isReady ? 'ready' : 'needs_info';
+
+        // Send done event
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({
             type: 'done',
             text: fullText,
             resultType,
             status: newStatus,
-          })}\n\n`));
-          controller.close();
-
-          // Store result — fire and forget with logging
-          db.update(scopeProposals)
-            .set({
-              aiAnalysis: jsonResult || { raw: fullText },
-              status: newStatus,
-              updatedAt: new Date(),
-            })
-            .where(eq(scopeProposals.id, proposalId))
-            .then(() => console.log(`[Analyze] DB updated: ${proposalId} → ${newStatus}`))
-            .catch((err) => {
-              console.error(`[Analyze] DB update failed for ${proposalId}:`, err);
-              // Try to at least reset from analyzing
-              db.update(scopeProposals)
-                .set({ status: 'needs_info', updatedAt: new Date() })
-                .where(eq(scopeProposals.id, proposalId))
-                .catch(console.error);
-            });
-        });
-      } catch (error) {
-        console.error('Analysis init error:', error);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-          type: 'error',
-          message: error instanceof Error ? error.message : 'Analysis failed',
-        })}\n\n`));
+          })}\n\n`),
+        );
         controller.close();
-        // Reset status
+
+        // Store result
+        await db
+          .update(scopeProposals)
+          .set({
+            aiAnalysis: jsonResult || { raw: fullText },
+            status: newStatus,
+            updatedAt: new Date(),
+          })
+          .where(eq(scopeProposals.id, proposalId));
+
+      } catch (error) {
+        console.error('Analysis error:', error);
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({
+            type: 'error',
+            message: error instanceof Error ? error.message : 'Analysis failed',
+          })}\n\n`),
+        );
+        controller.close();
+
         db.update(scopeProposals)
           .set({ status: 'needs_info', updatedAt: new Date() })
           .where(eq(scopeProposals.id, proposalId))

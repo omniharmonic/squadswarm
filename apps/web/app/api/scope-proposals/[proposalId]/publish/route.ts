@@ -79,16 +79,11 @@ export async function POST(
     workPlan = extractWorkPlanFromText(body.rawText);
   }
 
-  // Source 4: generate a minimal work plan from proposal data
   if (!workPlan) {
-    workPlan = {
-      type: 'work_plan',
-      summary: proposal.narrative || proposal.title,
-      workstreams: [],
-      estimatedTotalHours: 0,
-      suggestedTimelineDays: proposal.timelineDays || 30,
-      roles: [],
-    };
+    return NextResponse.json(
+      { error: 'No work plan found. Use "Auto-improve" in the AI analysis to generate one before publishing.' },
+      { status: 400 },
+    );
   }
 
   // Calculate bidding deadline
