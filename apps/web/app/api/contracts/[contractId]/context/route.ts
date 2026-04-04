@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
-import { db, contracts, squadMembers, workstreams, deliverables, users, agents } from '@squadswarm/db';
+import { db, contracts, squadMembers, workstreams, deliverables, users } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 
 type CollaborationLink = { type: string; label: string; url: string; addedBy?: string };
