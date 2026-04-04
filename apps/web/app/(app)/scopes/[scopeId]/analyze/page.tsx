@@ -299,8 +299,12 @@ export default function AIAnalysisPage() {
               const isReady = data.status === 'ready' || hasWorkPlan(content);
               if (isReady) {
                 setStatus('ready');
-                // Force backend status update in case server-side extraction failed
-                fetch(`/api/scope-proposals/${scopeId}/set-ready`, { method: 'POST' }).catch(() => {});
+                // Force backend status + work plan storage in case server-side extraction failed
+                fetch(`/api/scope-proposals/${scopeId}/set-ready`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ rawText: content }),
+                }).catch(() => {});
               } else {
                 setStatus('questions');
               }
