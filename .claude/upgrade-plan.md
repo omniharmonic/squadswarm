@@ -182,15 +182,21 @@ Our implementation should:
 - Store attestation UIDs in a new `attestations` table
 - Link from profile to EAS explorer
 
-### WS-4-T03: Trust Score Computation (TrustGraph-style)
-- Replace the simple additive scoring with weighted graph computation:
-  - Base: 0 (not 50)
-  - Each completed contract: +weight based on contract amount and client score
-  - Client rating: multiplier on the contract weight
-  - Dispute: negative weight
-  - Recency decay: attestations older than 6 months carry 50% weight
+### WS-4-T03: Trust Score Computation (TrustGraph PageRank-style)
+Following the Lay3rLabs/TrustGraph canonical implementation:
+- **Algorithm:** Modified PageRank with trust-aware weighting
+  - `PR(i) = (1-d)/N + d * Σ(PR(j) * W(j,i) / L(j))`
+  - Damping factor d=0.85, max iterations=100, convergence=1e-6
+- **Trusted seeds:** Platform-verified accounts get multiplied edge weights (2-5x)
+- **Edge weights from attestations:**
+  - ContractCompletion attestation: base weight = contract amount / 10000
+  - ClientSatisfaction attestation: multiplier = rating / 5
+  - Dispute resolution: negative weight
+- **Recency decay:** Attestations >6 months old carry 50% weight
+- **Sybil resistance:** Trust propagates from seeds; isolated spam rings can't inflate scores
 - Normalize to 0-100 scale
 - Compute for both users AND squads
+- Store in `trust_score` column, recompute on each new attestation
 
 ### WS-4-T04: Trust Display Throughout UI
 - Squad profiles: show attestation count + trust score badge
