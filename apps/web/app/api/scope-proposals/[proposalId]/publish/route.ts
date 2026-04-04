@@ -5,6 +5,30 @@ import { eq } from 'drizzle-orm';
 import { db, scopeProposals, scopes } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 
+function extractWorkPlanFromText(text: string): Record<string, unknown> | null {
+  // Try fenced JSON blocks
+  const fenceMatches = [...text.matchAll(/```json\s*([\s\S]*?)```/g)];
+  for (const match of fenceMatches.reverse()) {
+    try {
+      const parsed = JSON.parse(match[1]!.trim());
+      if (parsed.type === 'work_plan') return parsed;
+    } catch { /* next */ }
+  }
+  // Try brace matching for last top-level object
+  let depth = 0, lastStart = -1, lastEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') { if (depth === 0) lastStart = i; depth++; }
+    else if (text[i] === '}') { depth--; if (depth === 0 && lastStart >= 0) lastEnd = i; }
+  }
+  if (lastStart >= 0 && lastEnd > lastStart) {
+    try {
+      const parsed = JSON.parse(text.slice(lastStart, lastEnd + 1));
+      if (parsed.type === 'work_plan') return parsed;
+    } catch { /* skip */ }
+  }
+  return null;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ proposalId: string }> },
@@ -33,28 +57,38 @@ export async function POST(
     );
   }
 
-  // Extract work plan from AI analysis — handle multiple storage formats
+  // Extract work plan — try multiple sources
   const aiAnalysis = proposal.aiAnalysis as Record<string, unknown> | null;
   let workPlan: Record<string, unknown> | null = null;
 
+  // Source 1: ai_analysis is directly a work_plan
   if (aiAnalysis?.type === 'work_plan') {
     workPlan = aiAnalysis;
-  } else if (typeof aiAnalysis?.raw === 'string') {
-    // Stored as { raw: "json string" } — try to extract work plan
-    const rawStr = aiAnalysis.raw as string;
-    const jsonMatch = rawStr.match(/```json\s*([\s\S]*?)```/);
-    const toParse = jsonMatch?.[1]?.trim() || rawStr.trim();
-    try {
-      const parsed = JSON.parse(toParse);
-      if (parsed.type === 'work_plan') workPlan = parsed;
-    } catch { /* skip */ }
   }
 
+  // Source 2: ai_analysis has { raw: "..." }
+  if (!workPlan && typeof aiAnalysis?.raw === 'string') {
+    workPlan = extractWorkPlanFromText(aiAnalysis.raw as string);
+  }
+
+  // Source 3: request body has workPlan or rawText (frontend fallback)
+  if (!workPlan && body.workPlan?.type === 'work_plan') {
+    workPlan = body.workPlan;
+  }
+  if (!workPlan && typeof body.rawText === 'string') {
+    workPlan = extractWorkPlanFromText(body.rawText);
+  }
+
+  // Source 4: generate a minimal work plan from proposal data
   if (!workPlan) {
-    return NextResponse.json(
-      { error: 'No work plan found in analysis. Use "Auto-improve" to generate one.' },
-      { status: 400 },
-    );
+    workPlan = {
+      type: 'work_plan',
+      summary: proposal.narrative || proposal.title,
+      workstreams: [],
+      estimatedTotalHours: 0,
+      suggestedTimelineDays: proposal.timelineDays || 30,
+      roles: [],
+    };
   }
 
   // Calculate bidding deadline

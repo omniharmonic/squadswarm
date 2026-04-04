@@ -343,13 +343,21 @@ export default function AIAnalysisPage() {
   async function handlePublish() {
     setPublishing(true);
     try {
-      // Ensure status is ready before publishing
-      await fetch(`/api/scope-proposals/${scopeId}/set-ready`, { method: 'POST' });
+      // Get the last analyst message with the work plan
+      const lastAnalystMsg = [...messages].reverse().find((m) => m.role === 'analyst');
+      const rawText = lastAnalystMsg?.content || '';
+
+      // Ensure status is ready and work plan is stored
+      await fetch(`/api/scope-proposals/${scopeId}/set-ready`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText }),
+      });
 
       const res = await fetch(`/api/scope-proposals/${scopeId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ rawText }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
