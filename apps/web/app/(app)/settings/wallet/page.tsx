@@ -10,7 +10,7 @@ interface User {
 }
 
 export default function WalletSettingsPage() {
-  const { connect, address, isConnected, disconnect } = useWeb3();
+  const { connect, address, isConnected, disconnect, connecting } = useWeb3();
   const [user, setUser] = useState<User | null>(null);
   const [linking, setLinking] = useState(false);
 
@@ -22,6 +22,7 @@ export default function WalletSettingsPage() {
   }, []);
 
   async function handleLinkWallet() {
+    if (linking || connecting) return;
     if (!isConnected || !address) {
       try { await connect(); } catch { return; }
     }
@@ -63,7 +64,13 @@ export default function WalletSettingsPage() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed';
-      if (!msg.includes('User rejected')) toast.error(msg);
+      if (
+        !msg.includes('User rejected') &&
+        !msg.includes('already pending') &&
+        !msg.includes('Already processing')
+      ) {
+        toast.error(msg);
+      }
     } finally {
       setLinking(false);
     }
@@ -97,7 +104,7 @@ export default function WalletSettingsPage() {
               {isConnected ? `Connected: ${address?.slice(0, 6)}...${address?.slice(-4)}` : 'No wallet connected'}
             </p>
             <button onClick={isConnected ? handleLinkWallet : async () => { try { await connect(); } catch {} }}
-              disabled={linking}
+              disabled={linking || connecting}
               className="px-6 py-2.5 bg-accent-agent text-white rounded-xl text-sm font-medium hover:bg-accent-agent-hover transition-colors disabled:opacity-50">
               {linking ? 'Linking...' : isConnected ? 'Link Wallet to Account' : 'Connect Wallet'}
             </button>

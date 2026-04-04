@@ -1,13 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Suspense } from 'react';
+import Link from 'next/link';
+
+import { toast } from 'sonner';
 
 interface Squad {
   id: string;
   name: string;
   role: string;
+}
+
+interface ScopeInfo {
+  id: string;
+  title: string;
+  budgetMin: string | null;
+  budgetMax: string | null;
+  timelineDays: number | null;
+  status: string;
 }
 
 function BidBuilderContent() {
@@ -16,6 +27,8 @@ function BidBuilderContent() {
   const scopeId = searchParams.get('scopeId');
 
   const [squads, setSquads] = useState<Squad[]>([]);
+  const [scopeInfo, setScopeInfo] = useState<ScopeInfo | null>(null);
+  const [scopeLoading, setScopeLoading] = useState(true);
   const [selectedSquadId, setSelectedSquadId] = useState('');
   const [approach, setApproach] = useState('');
   const [proposedPrice, setProposedPrice] = useState('');
@@ -38,6 +51,21 @@ function BidBuilderContent() {
         ]);
       });
   }, []);
+
+  useEffect(() => {
+    if (!scopeId) {
+      setScopeLoading(false);
+      return;
+    }
+    fetch(`/api/scopes/${scopeId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Scope not found');
+        return res.json();
+      })
+      .then((data) => setScopeInfo(data))
+      .catch(() => setScopeInfo(null))
+      .finally(() => setScopeLoading(false));
+  }, [scopeId]);
 
   async function handleSave() {
     if (!scopeId || !selectedSquadId) return;
@@ -66,11 +94,15 @@ function BidBuilderContent() {
         const data = await res.json();
         setBidId(data.id);
         setStatus('saved');
+        toast.success('Draft saved');
       } else {
+        const data = await res.json();
         setStatus('error');
+        toast.error(data.error || 'Failed to save draft');
       }
     } catch {
       setStatus('error');
+      toast.error('Failed to save draft');
     }
   }
 
@@ -78,7 +110,8 @@ function BidBuilderContent() {
     if (!bidId) {
       await handleSave();
     }
-    // In a real flow, this would trigger governance approval
+    if (status === 'error') return;
+    toast.success('Bid submitted!');
     router.push(`/scopes/${scopeId}`);
   }
 
@@ -86,18 +119,52 @@ function BidBuilderContent() {
     return (
       <div className="text-center py-12">
         <p className="text-text-secondary">No scope selected. Go to the Scope Board to find work.</p>
-        <a href="/scopes" className="text-accent-squad hover:underline mt-2 inline-block">
+        <Link href="/scopes" className="text-accent-squad hover:underline mt-2 inline-block">
           Browse Scopes
-        </a>
+        </Link>
+      </div>
+    );
+  }
+
+  if (scopeLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-8 h-8 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  if (!scopeLoading && !scopeInfo) {
+    return (
+      <div className="text-center py-12">
+        <h1 className="text-xl font-semibold mb-2">Scope Not Found</h1>
+        <p className="text-text-secondary text-sm mb-4">This scope may have been removed or the link is incorrect.</p>
+        <Link href="/scopes" className="text-accent-squad hover:underline">
+          Browse Scopes
+        </Link>
       </div>
     );
   }
 
   return (
     <div>
+      <Link
+        href={`/scopes/${scopeId}`}
+        className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary mb-4"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Scope
+      </Link>
+
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Build Your Bid</h1>
-        <p className="text-text-secondary mt-1">Craft a compelling proposal for this scope of work.</p>
+        {scopeInfo && (
+          <p className="text-text-secondary mt-1">
+            Bidding on: <span className="font-medium text-text-primary">{scopeInfo.title}</span>
+          </p>
+        )}
       </div>
 
       <div className="space-y-6">

@@ -8,7 +8,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const { connect, address, isConnected } = useWeb3();
+  const { connect, address, isConnected, connecting } = useWeb3();
   const [walletLoading, setWalletLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -38,6 +38,7 @@ export default function LoginPage() {
   }
 
   async function handleWalletSignIn() {
+    if (walletLoading || connecting) return;
     setWalletLoading(true);
     try {
       await connect();
@@ -79,7 +80,12 @@ export default function LoginPage() {
       window.location.href = '/dashboard';
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Wallet sign-in failed';
-      if (!msg.includes('User rejected') && !msg.includes('No wallet')) {
+      if (
+        !msg.includes('User rejected') &&
+        !msg.includes('No wallet') &&
+        !msg.includes('already pending') &&
+        !msg.includes('Already processing')
+      ) {
         toast.error(msg);
       }
     } finally {
@@ -132,7 +138,7 @@ export default function LoginPage() {
         <div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-text-secondary">or</span></div>
       </div>
 
-      <button onClick={handleWalletSignIn} disabled={walletLoading}
+      <button onClick={handleWalletSignIn} disabled={walletLoading || connecting}
         className="w-full py-2.5 px-4 border border-border rounded-xl font-medium text-sm hover:bg-bg-secondary transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 110-6h.008a2.248 2.248 0 012.242 2.25M21 12v6.75A2.25 2.25 0 0118.75 21H5.25A2.25 2.25 0 013 18.75V12m18 0H3m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 12" />

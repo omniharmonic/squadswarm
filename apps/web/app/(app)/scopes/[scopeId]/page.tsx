@@ -19,6 +19,14 @@ interface Scope {
   status: string;
   workPlan: Record<string, unknown> | null;
   bidCount?: number;
+  clientId?: string;
+}
+
+interface SessionUser {
+  user: {
+    id: string;
+    email: string;
+  };
 }
 
 function formatBudget(min: string | null, max: string | null) {
@@ -52,6 +60,7 @@ export default function ScopeDetailPage() {
   const [scope, setScope] = useState<Scope | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/scopes/${scopeId}`)
@@ -62,7 +71,16 @@ export default function ScopeDetailPage() {
       .then((data) => setScope(data))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+
+    fetch('/api/auth/session')
+      .then((res) => res.json())
+      .then((data: SessionUser) => {
+        if (data.user?.id) setCurrentUserId(data.user.id);
+      })
+      .catch(() => {});
   }, [scopeId]);
+
+  const isClient = !!(currentUserId && scope?.clientId && currentUserId === scope.clientId);
 
   if (loading) {
     return (
@@ -183,14 +201,33 @@ export default function ScopeDetailPage() {
       )}
 
       {/* CTA */}
-      <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
-        <h2 className="text-lg font-semibold mb-2">Ready to work on this scope?</h2>
-        <p className="text-sm text-text-secondary mb-4">Submit a bid to show your interest and proposed approach.</p>
-        <Link href={`/bids/new?scopeId=${scope.id}`}
-          className="inline-block py-2.5 px-6 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
-          Start a Bid
-        </Link>
-      </div>
+      {isClient ? (
+        <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
+          <h2 className="text-lg font-semibold mb-2">Review Bids</h2>
+          <p className="text-sm text-text-secondary mb-4">
+            {scope.bidCount
+              ? `You have ${scope.bidCount} bid${scope.bidCount !== 1 ? 's' : ''} to review.`
+              : 'No bids received yet. Check back later.'}
+          </p>
+          <Link
+            href={`/scopes/${scope.id}/bids`}
+            className="inline-block py-2.5 px-6 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            View Bids{scope.bidCount ? ` (${scope.bidCount})` : ''}
+          </Link>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
+          <h2 className="text-lg font-semibold mb-2">Ready to work on this scope?</h2>
+          <p className="text-sm text-text-secondary mb-4">Submit a bid to show your interest and proposed approach.</p>
+          <Link
+            href={`/bids/new?scopeId=${scope.id}`}
+            className="inline-block py-2.5 px-6 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            Start a Bid
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

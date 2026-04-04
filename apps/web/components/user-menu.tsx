@@ -54,12 +54,15 @@ export function UserMenu() {
             Settings
           </Link>
           <div className="border-t border-border my-1" />
-          <Link
-            href="/api/auth/signout"
-            className="block px-4 py-2 text-sm text-accent-squad hover:bg-bg-secondary transition-colors"
+          <button
+            onClick={async () => {
+              await fetch('/api/auth/session', { method: 'DELETE' });
+              window.location.href = '/login';
+            }}
+            className="block w-full text-left px-4 py-2 text-sm text-accent-squad hover:bg-bg-secondary transition-colors"
           >
             Sign Out
-          </Link>
+          </button>
         </div>
       )}
     </div>
