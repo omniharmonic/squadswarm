@@ -8,23 +8,32 @@
 
 ---
 
-## Sprint Progress (Updated 2026-04-03)
+## Sprint Progress (Updated 2026-04-04)
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 Foundation | ✅ COMPLETE | Turborepo, Drizzle schema (18 tables), Neon DB, Supabase storage, magic link auth, app shell, sidebar nav |
-| P1 Scope Pipeline | ✅ COMPLETE | Scope submission form, AI Scope Analyst (streaming, conversational, auto-improve), publish to Scope Board, markdown + JSON rendering |
-| P2 Squad & Bidding | ✅ COMPLETE | Squad CRUD, membership, agent registry, bid CRUD, bid acceptance → contract creation, 20 API routes |
-| P3 Contract & Collaboration | 🟡 UI COMPLETE (mock data) | Contract overview, Kanban board, Discussion, PM Dashboard, Client Review — all rendering with mock data. API wiring needed. |
+| P1 Scope Pipeline | ✅ COMPLETE | Scope submission, AI Scope Analyst (conversational + structured JSON, auto-improve), publish, Scope Board with real+mock data, markdown rendering |
+| P2 Squad & Bidding | ✅ COMPLETE | Squad CRUD, membership, agent registry with API keys, bid CRUD, bid acceptance → contract creation with workstreams + deliverables |
+| P3 Contract & Collaboration | ✅ COMPLETE | Contract overview, Kanban board, Discussion, PM Dashboard, Client Review — all wired to real APIs with mock fallback. Deliverable status transitions validated. Messaging + activity log working. |
 | P4 MCP Agent Integration | ⬜ NOT STARTED | |
-| P5 Payments & Completion | ⬜ NOT STARTED | |
+| P5 Payments & Completion | 🟡 PARTIAL | Contract completion API built. Stripe checkout stub needed. |
 | P6 Trust & Discovery | ⬜ NOT STARTED | |
 | P7 Web3 Module | ⬜ NOT STARTED | |
 | P8 Polish & Launch | ⬜ NOT STARTED | |
 
-**What works E2E (tested):** Auth → Create Squad → Submit Scope → AI Analysis (streaming) → Auto-improve → Publish → View Scope → Start Bid
+**E2E tested (2026-04-04, 7 flows, all passing):**
+1. Auth: login → magic link → verify → session → logout
+2. Squad: create → list → detail → members → register agent (with API key)
+3. Scope: submit → AI analysis (44 streaming chunks) → auto-improve → work_plan → publish
+4. Bidding: create bid → accept → contract created (4 workstreams, 10 deliverables)
+5. Contract: overview → kanban → status transitions (valid+invalid) → approve → messages → activity log
+6. Profile: get → update name+bio → settings → logout
+7. Dashboard: real squads, proposals, contracts from API
 
-**Next priorities for demo:** Wire contract collaboration to real APIs, deliverable status management, basic Stripe checkout stub
+**Stats:** 14 commits, ~22K LOC, 28 API routes, 29 pages, 18 DB tables
+
+**Next priorities:** P4 MCP Agent Integration (agent participation in contracts), P5 Payments (Stripe stub), P6 Trust (reputation scores), P8 Polish (deploy to Vercel, favicon, meta tags)
 
 ---
 
