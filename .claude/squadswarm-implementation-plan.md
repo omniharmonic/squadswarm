@@ -2,9 +2,29 @@
 
 **Author:** Benjamin Life (@omniharmonic)
 **Date:** April 3, 2026
-**Status:** Draft
+**Status:** In Progress
 **Companion to:** SquadSwarm PRD v1.0, Technical Architecture v1.0
 **License:** CC BY-SA 4.0
+
+---
+
+## Sprint Progress (Updated 2026-04-03)
+
+| Phase | Status | Notes |
+|---|---|---|
+| P0 Foundation | ✅ COMPLETE | Turborepo, Drizzle schema (18 tables), Neon DB, Supabase storage, magic link auth, app shell, sidebar nav |
+| P1 Scope Pipeline | ✅ COMPLETE | Scope submission form, AI Scope Analyst (streaming, conversational, auto-improve), publish to Scope Board, markdown + JSON rendering |
+| P2 Squad & Bidding | ✅ COMPLETE | Squad CRUD, membership, agent registry, bid CRUD, bid acceptance → contract creation, 20 API routes |
+| P3 Contract & Collaboration | 🟡 UI COMPLETE (mock data) | Contract overview, Kanban board, Discussion, PM Dashboard, Client Review — all rendering with mock data. API wiring needed. |
+| P4 MCP Agent Integration | ⬜ NOT STARTED | |
+| P5 Payments & Completion | ⬜ NOT STARTED | |
+| P6 Trust & Discovery | ⬜ NOT STARTED | |
+| P7 Web3 Module | ⬜ NOT STARTED | |
+| P8 Polish & Launch | ⬜ NOT STARTED | |
+
+**What works E2E (tested):** Auth → Create Squad → Submit Scope → AI Analysis (streaming) → Auto-improve → Publish → View Scope → Start Bid
+
+**Next priorities for demo:** Wire contract collaboration to real APIs, deliverable status management, basic Stripe checkout stub
 
 ---
 
