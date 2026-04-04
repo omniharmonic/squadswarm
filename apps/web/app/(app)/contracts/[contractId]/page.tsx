@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
@@ -63,19 +64,87 @@ const DELIVERABLE_STATUS_STYLES: Record<string, { bg: string; label: string }> =
   blocked: { bg: 'bg-error/10 text-error', label: 'Blocked' },
 };
 
+interface Deliverable {
+  id: string;
+  title: string;
+  status: string;
+  format: string;
+  assignee: string;
+}
+
+interface Workstream {
+  id: string;
+  title: string;
+  status: string;
+  deliverables: Deliverable[];
+}
+
+interface Contract {
+  id: string;
+  title: string;
+  status: string;
+  clientName: string;
+  squadName: string;
+  totalAmount: string;
+  feedbackRoundsTotal: number;
+  feedbackRoundsUsed: number;
+  startedAt: string;
+  workstreams: Workstream[];
+}
+
 export default function ContractOverviewPage() {
   const params = useParams();
-  const contract = MOCK_CONTRACT;
   const contractId = params.contractId as string;
+  const [contract, setContract] = useState<Contract>(MOCK_CONTRACT);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchContract() {
+      try {
+        const res = await fetch(`/api/contracts/${contractId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setContract({
+            id: data.id,
+            title: data.title,
+            status: data.status,
+            clientName: data.clientName,
+            squadName: data.squadName,
+            totalAmount: data.totalAmount,
+            feedbackRoundsTotal: data.feedbackRoundsTotal ?? 3,
+            feedbackRoundsUsed: data.feedbackRoundsUsed ?? 0,
+            startedAt: data.startedAt || data.createdAt,
+            workstreams: (data.workstreams || []).map((ws: Record<string, unknown>) => ({
+              id: ws.id,
+              title: ws.title,
+              status: ws.status || 'not_started',
+              deliverables: ((ws.deliverables as Record<string, unknown>[]) || []).map((d: Record<string, unknown>) => ({
+                id: d.id,
+                title: d.title,
+                status: d.status || 'not_started',
+                format: d.format || 'document',
+                assignee: d.assignee || 'Unassigned',
+              })),
+            })),
+          });
+        }
+      } catch {
+        // Keep mock data as fallback
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchContract();
+  }, [contractId]);
 
   const allDeliverables = contract.workstreams.flatMap((ws) => ws.deliverables);
   const approvedCount = allDeliverables.filter((d) => d.status === 'approved').length;
   const totalCount = allDeliverables.length;
-  const progressPercent = Math.round((approvedCount / totalCount) * 100);
+  const progressPercent = totalCount > 0 ? Math.round((approvedCount / totalCount) * 100) : 0;
 
-  const daysActive = Math.floor(
-    (Date.now() - new Date(contract.startedAt).getTime()) / 86400000
-  );
+  const daysActive = contract.startedAt
+    ? Math.floor((Date.now() - new Date(contract.startedAt).getTime()) / 86400000)
+    : 0;
 
   const tabs = [
     { label: 'Board', href: `/contracts/${contractId}/board` },
@@ -85,6 +154,17 @@ export default function ContractOverviewPage() {
     { label: 'PM Dashboard', href: `/contracts/${contractId}/pm` },
     { label: 'Client Review', href: `/contracts/${contractId}/review` },
   ];
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl">
+        <div className="bg-white rounded-xl border border-border p-6 mb-6 animate-pulse">
+          <div className="h-8 bg-bg-secondary rounded w-1/3 mb-4" />
+          <div className="h-4 bg-bg-secondary rounded w-1/2" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl">

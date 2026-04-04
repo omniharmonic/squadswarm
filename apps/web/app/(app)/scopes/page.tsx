@@ -1,6 +1,23 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-const MOCK_SCOPES = [
+interface ScopeItem {
+  id: string;
+  title: string;
+  categoryTags: string[] | null;
+  budgetMin: string | null;
+  budgetMax: string | null;
+  timelineDays: number | null;
+  trustThreshold: string | null;
+  biddingDeadline: string | null;
+  status: string;
+  narrative: string | null;
+  _isMock?: boolean;
+}
+
+const MOCK_SCOPES: ScopeItem[] = [
   {
     id: 'mock-1',
     title: 'Build a Regenerative Finance Dashboard',
@@ -13,6 +30,7 @@ const MOCK_SCOPES = [
     status: 'open',
     narrative:
       'We need a web dashboard that visualizes regenerative finance metrics...',
+    _isMock: true,
   },
   {
     id: 'mock-2',
@@ -26,6 +44,7 @@ const MOCK_SCOPES = [
     status: 'open',
     narrative:
       'Write comprehensive documentation for our governance toolkit...',
+    _isMock: true,
   },
   {
     id: 'mock-3',
@@ -39,6 +58,7 @@ const MOCK_SCOPES = [
     status: 'open',
     narrative:
       'Integrate AI agents to track and verify supply chain data...',
+    _isMock: true,
   },
   {
     id: 'mock-4',
@@ -52,6 +72,7 @@ const MOCK_SCOPES = [
     status: 'open',
     narrative:
       'Build a mobile application for managing cooperative memberships...',
+    _isMock: true,
   },
   {
     id: 'mock-5',
@@ -65,6 +86,7 @@ const MOCK_SCOPES = [
     status: 'open',
     narrative:
       'Perform a security audit of our carbon credit verification contracts...',
+    _isMock: true,
   },
   {
     id: 'mock-6',
@@ -78,19 +100,21 @@ const MOCK_SCOPES = [
     status: 'open',
     narrative:
       'Design a complete brand identity for our regenerative agriculture platform...',
+    _isMock: true,
   },
 ];
 
-function formatBudget(min: string, max: string) {
+function formatBudget(min: string | null, max: string | null) {
   if (!min && !max) return 'Open budget';
   const fmt = (v: string) =>
     Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   if (min && max) return `${fmt(min)} - ${fmt(max)}`;
   if (min) return `From ${fmt(min)}`;
-  return `Up to ${fmt(max)}`;
+  return `Up to ${fmt(max!)}`;
 }
 
-function daysLeft(deadline: string) {
+function daysLeft(deadline: string | null) {
+  if (!deadline) return '';
   const diff = new Date(deadline).getTime() - Date.now();
   const days = Math.max(0, Math.ceil(diff / 86400000));
   if (days === 0) return 'Closing today';
@@ -116,6 +140,32 @@ function TrustBadge({ threshold }: { threshold: string }) {
 }
 
 export default function ScopeBoardPage() {
+  const [scopes, setScopes] = useState<ScopeItem[]>(MOCK_SCOPES);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/scopes')
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        return res.json();
+      })
+      .then((realScopes: ScopeItem[]) => {
+        if (realScopes.length > 0) {
+          // Deduplicate: remove mocks whose titles match a real scope
+          const realTitles = new Set(realScopes.map((s) => s.title.toLowerCase()));
+          const filteredMocks = MOCK_SCOPES.filter(
+            (m) => !realTitles.has(m.title.toLowerCase())
+          );
+          setScopes([...realScopes, ...filteredMocks]);
+        }
+        // If no real scopes, keep the mocks already set
+      })
+      .catch(() => {
+        // On error (e.g. not authenticated), keep mock data
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -134,56 +184,62 @@ export default function ScopeBoardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {MOCK_SCOPES.map((scope) => (
-          <Link
-            key={scope.id}
-            href={`/scopes/${scope.id}`}
-            className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow group"
-          >
-            {/* Title */}
-            <h2 className="text-base font-semibold text-text-primary line-clamp-2 group-hover:text-accent-squad transition-colors mb-2">
-              {scope.title}
-            </h2>
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="w-8 h-8 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {scopes.map((scope) => (
+            <Link
+              key={scope.id}
+              href={`/scopes/${scope.id}`}
+              className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow group"
+            >
+              {/* Title */}
+              <h2 className="text-base font-semibold text-text-primary line-clamp-2 group-hover:text-accent-squad transition-colors mb-2">
+                {scope.title}
+              </h2>
 
-            {/* Tags */}
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {scope.categoryTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-0.5 bg-bg-secondary text-text-secondary text-xs rounded-full"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
+              {/* Tags */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {(scope.categoryTags ?? []).map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2 py-0.5 bg-bg-secondary text-text-secondary text-xs rounded-full"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
 
-            {/* Budget & Timeline */}
-            <div className="space-y-1.5 text-sm mb-3">
-              <div className="flex items-center justify-between">
-                <span className="text-text-secondary">Budget</span>
-                <span className="font-medium text-text-primary">
-                  {formatBudget(scope.budgetMin, scope.budgetMax)}
+              {/* Budget & Timeline */}
+              <div className="space-y-1.5 text-sm mb-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Budget</span>
+                  <span className="font-medium text-text-primary">
+                    {formatBudget(scope.budgetMin, scope.budgetMax)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Timeline</span>
+                  <span className="font-medium text-text-primary">
+                    {scope.timelineDays ? `${scope.timelineDays} days` : 'Flexible'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <TrustBadge threshold={scope.trustThreshold || 'open'} />
+                <span className="text-xs text-text-secondary">
+                  {scope.biddingDeadline ? daysLeft(scope.biddingDeadline) : ''}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-text-secondary">Timeline</span>
-                <span className="font-medium text-text-primary">
-                  {scope.timelineDays} days
-                </span>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-3 border-t border-border">
-              <TrustBadge threshold={scope.trustThreshold} />
-              <span className="text-xs text-text-secondary">
-                {daysLeft(scope.biddingDeadline)}
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
