@@ -14,11 +14,20 @@ export async function GET(
 
   const { scopeId } = await params;
 
-  const [scope] = await db
+  // Try by scope ID first, then by proposal ID as fallback
+  let [scope] = await db
     .select()
     .from(scopes)
     .where(eq(scopes.id, scopeId))
     .limit(1);
+
+  if (!scope) {
+    [scope] = await db
+      .select()
+      .from(scopes)
+      .where(eq(scopes.proposalId, scopeId))
+      .limit(1);
+  }
 
   if (!scope) return NextResponse.json({ error: 'Scope not found' }, { status: 404 });
 

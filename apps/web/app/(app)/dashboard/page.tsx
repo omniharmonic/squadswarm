@@ -59,7 +59,7 @@ function proposalLink(proposal: Proposal): string {
       return '/scopes/new';
     case 'analyzing':
     case 'ready':
-      return `/scope-proposals/${proposal.id}/analyze`;
+      return `/scopes/${proposal.id}/analyze`;
     case 'published':
       return `/scopes/${proposal.id}`;
     default:
