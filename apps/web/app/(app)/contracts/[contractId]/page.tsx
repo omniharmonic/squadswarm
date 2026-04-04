@@ -48,6 +48,7 @@ const MOCK_CONTRACT = {
 };
 
 const STATUS_STYLES: Record<string, string> = {
+  pending_deposit: 'bg-accent-client/10 text-accent-client',
   active: 'bg-success/10 text-success',
   completed: 'bg-accent-agent/10 text-accent-agent',
   paused: 'bg-warning/10 text-warning',
@@ -97,45 +98,62 @@ export default function ContractOverviewPage() {
   const contractId = params.contractId as string;
   const [contract, setContract] = useState<Contract>(MOCK_CONTRACT);
   const [loading, setLoading] = useState(true);
+  const [funding, setFunding] = useState(false);
+
+  async function fetchContract() {
+    try {
+      const res = await fetch(`/api/contracts/${contractId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setContract({
+          id: data.id,
+          title: data.title,
+          status: data.status,
+          clientName: data.clientName,
+          squadName: data.squadName,
+          totalAmount: data.totalAmount,
+          feedbackRoundsTotal: data.feedbackRoundsTotal ?? 3,
+          feedbackRoundsUsed: data.feedbackRoundsUsed ?? 0,
+          startedAt: data.startedAt || data.createdAt,
+          workstreams: (data.workstreams || []).map((ws: Record<string, unknown>) => ({
+            id: ws.id,
+            title: ws.title,
+            status: ws.status || 'not_started',
+            deliverables: ((ws.deliverables as Record<string, unknown>[]) || []).map((d: Record<string, unknown>) => ({
+              id: d.id,
+              title: d.title,
+              status: d.status || 'not_started',
+              format: d.format || 'document',
+              assignee: d.assignee || 'Unassigned',
+            })),
+          })),
+        });
+      }
+    } catch {
+      // Keep mock data as fallback
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function fetchContract() {
-      try {
-        const res = await fetch(`/api/contracts/${contractId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setContract({
-            id: data.id,
-            title: data.title,
-            status: data.status,
-            clientName: data.clientName,
-            squadName: data.squadName,
-            totalAmount: data.totalAmount,
-            feedbackRoundsTotal: data.feedbackRoundsTotal ?? 3,
-            feedbackRoundsUsed: data.feedbackRoundsUsed ?? 0,
-            startedAt: data.startedAt || data.createdAt,
-            workstreams: (data.workstreams || []).map((ws: Record<string, unknown>) => ({
-              id: ws.id,
-              title: ws.title,
-              status: ws.status || 'not_started',
-              deliverables: ((ws.deliverables as Record<string, unknown>[]) || []).map((d: Record<string, unknown>) => ({
-                id: d.id,
-                title: d.title,
-                status: d.status || 'not_started',
-                format: d.format || 'document',
-                assignee: d.assignee || 'Unassigned',
-              })),
-            })),
-          });
-        }
-      } catch {
-        // Keep mock data as fallback
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchContract();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractId]);
+
+  async function handleFundContract() {
+    setFunding(true);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/deposit`, { method: 'POST' });
+      if (res.ok) {
+        await fetchContract();
+      }
+    } catch {
+      // Silently fail for demo
+    } finally {
+      setFunding(false);
+    }
+  }
 
   const allDeliverables = contract.workstreams.flatMap((ws) => ws.deliverables);
   const approvedCount = allDeliverables.filter((d) => d.status === 'approved').length;
@@ -241,6 +259,50 @@ export default function ContractOverviewPage() {
             </span>
           </p>
         </div>
+      </div>
+
+      {/* Payment status */}
+      <div className="bg-white rounded-xl border border-border p-5 mb-6">
+        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-3">Payment Status</h2>
+        {contract.status === 'pending_deposit' && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-text-primary font-medium">Awaiting deposit to begin work</p>
+              <p className="text-sm text-text-secondary mt-0.5">
+                Fund ${parseFloat(contract.totalAmount).toLocaleString()} to start work
+              </p>
+            </div>
+            <button
+              onClick={handleFundContract}
+              disabled={funding}
+              className="px-5 py-2.5 bg-accent-client text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {funding ? 'Processing...' : `Fund $${parseFloat(contract.totalAmount).toLocaleString()}`}
+            </button>
+          </div>
+        )}
+        {contract.status === 'active' && (
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              Funded
+            </span>
+            <span className="text-text-primary font-medium">
+              ${parseFloat(contract.totalAmount).toLocaleString()} deposited
+            </span>
+          </div>
+        )}
+        {contract.status === 'completed' && (
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent-agent/10 text-accent-agent rounded-full text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              Completed &amp; Paid
+            </span>
+            <span className="text-text-primary font-medium">
+              ${parseFloat(contract.totalAmount).toLocaleString()} released
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Navigation tabs */}

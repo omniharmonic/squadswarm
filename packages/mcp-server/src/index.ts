@@ -1,1 +1,2 @@
-export const TODO_MCP = true;
+export { createSquadSwarmMcpServer } from './server';
+export type { AgentContext } from './server';

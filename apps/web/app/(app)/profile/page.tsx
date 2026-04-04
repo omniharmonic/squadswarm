@@ -31,6 +31,18 @@ export default function MyProfilePage() {
         }
       })
       .catch(() => {});
+
+    // Refresh trust score in background
+    fetch('/api/users/me/trust-score')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.trustScore !== undefined) {
+          setUser((prev) =>
+            prev ? { ...prev, trustScore: String(data.trustScore) } : prev,
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   async function handleSave() {

@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/verify',
   '/api/auth',
   '/api/health',
+  '/api/mcp',
   '/api/webhooks',
   '/api/cron',
 ];
