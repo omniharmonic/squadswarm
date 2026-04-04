@@ -9,7 +9,7 @@ export async function sendMagicLink(email: string, token: string) {
   const magicLinkUrl = `${baseUrl}/verify?token=${token}`;
 
   const { data, error } = await getResend().emails.send({
-    from: 'SquadSwarm <noreply@cosense.us>',
+    from: 'SquadSwarm <hello@squadswarm.xyz>',
     to: email,
     subject: 'Sign in to SquadSwarm',
     html: `
