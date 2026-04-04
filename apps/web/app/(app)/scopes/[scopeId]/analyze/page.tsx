@@ -159,23 +159,77 @@ function WorkPlanView({ data }: { data: WorkPlan }) {
   );
 }
 
+/* ── Simple markdown renderer ── */
+
+function SimpleMarkdown({ text }: { text: string }) {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let listItems: string[] = [];
+
+  function flushList() {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 my-2">
+          {listItems.map((item, i) => <li key={i} className="text-sm text-text-secondary">{renderInline(item)}</li>)}
+        </ul>
+      );
+      listItems = [];
+    }
+  }
+
+  function renderInline(s: string): React.ReactNode {
+    // Bold: **text**
+    const parts = s.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i} className="font-semibold text-text-primary">{part.slice(2, -2)}</strong>;
+      }
+      return part;
+    });
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('### ')) {
+      flushList();
+      elements.push(<h4 key={i} className="font-semibold text-sm mt-3 mb-1">{trimmed.slice(4)}</h4>);
+    } else if (trimmed.startsWith('## ')) {
+      flushList();
+      elements.push(<h3 key={i} className="font-semibold text-base mt-3 mb-1">{trimmed.slice(3)}</h3>);
+    } else if (trimmed.startsWith('# ')) {
+      flushList();
+      elements.push(<h2 key={i} className="font-bold text-lg mt-3 mb-1">{trimmed.slice(2)}</h2>);
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      listItems.push(trimmed.slice(2));
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      listItems.push(trimmed.replace(/^\d+\.\s/, ''));
+    } else if (trimmed === '') {
+      flushList();
+      // Skip empty lines
+    } else {
+      flushList();
+      elements.push(<p key={i} className="text-sm text-text-secondary leading-relaxed">{renderInline(trimmed)}</p>);
+    }
+  }
+  flushList();
+
+  return <div className="space-y-1">{elements}</div>;
+}
+
 /* ── Render a single analyst message with mixed text + structured data ── */
 
 function AnalystMessage({ content }: { content: string }) {
   const segments = parseContent(content);
 
-  if (segments.length === 0) return <span className="whitespace-pre-wrap">{content}</span>;
+  if (segments.length === 0) return <SimpleMarkdown text={content} />;
 
   return (
     <div className="space-y-4">
       {segments.map((seg, i) => {
         if (seg.kind === 'text') {
-          // Simple markdown-ish rendering
-          return (
-            <div key={i} className="text-sm leading-relaxed whitespace-pre-wrap prose-sm">
-              {seg.text}
-            </div>
-          );
+          return <SimpleMarkdown key={i} text={seg.text} />;
         }
         if (seg.data.type === 'sufficiency_assessment') return <SufficiencyView key={i} data={seg.data} />;
         if (seg.data.type === 'work_plan') return <WorkPlanView key={i} data={seg.data} />;
