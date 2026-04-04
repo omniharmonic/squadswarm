@@ -19,7 +19,7 @@
 | P4 MCP Agent Integration | ✅ COMPLETE | 9 MCP tools wired to real Drizzle DB via service functions. HTTP endpoint routes all tool calls with auth + error handling. Activity attribution tracks agentId. |
 | P5 Payments & Completion | ✅ COMPLETE | Stripe client stub, deposit flow, contract completion with cascading check, handoff package API, dispute create/list/resolve with custom splits. |
 | P6 Trust & Discovery | ✅ COMPLETE | Client 4-dimension rating flow, TrustBadge component throughout UI, trust score calculation, suggestion engine with category matching, "Recommended" section on scope board. |
-| P7 Web3 Module | ⬜ NEXT UP | Wallet settings page built. SIWE, smart contracts, EAS — building tonight. |
+| P7 Web3 Module | ✅ COMPLETE | SIWE wallet auth, SquadSwarmEscrow.sol + PaymentSplitter.sol (Foundry), 6 EAS attestation schemas, attestation creation helpers, Web3Provider, wallet connect on login + settings. |
 | P8 Polish & Launch | ✅ COMPLETE | CI, favicon, OG image, loading states, 404, toasts, user docs, MCP docs, about page. Deployed to Vercel at squadswarm.xyz. 40+ E2E tests passing. |
 
 **Production:** https://www.squadswarm.xyz (Vercel, omniharmonic account)
