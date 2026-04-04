@@ -212,16 +212,6 @@ export default function HomePage() {
           <p className="text-sm font-medium text-text-secondary uppercase tracking-wider mb-6">
             Built for the regenerative economy
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
-            {['Regen Hub', 'OpenCivics', 'Climate DAO'].map((name) => (
-              <span
-                key={name}
-                className="text-lg sm:text-xl font-semibold text-text-secondary/50"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -238,7 +228,7 @@ export default function HomePage() {
             />
             <span>SquadSwarm — Solidarity-based microcooperatives + AI swarms</span>
           </div>
-          <span>Built for the Regen Hub</span>
+          <span>Built for the regenerative economy</span>
         </div>
       </footer>
     </main>
