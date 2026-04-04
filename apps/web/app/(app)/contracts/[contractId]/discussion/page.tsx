@@ -1,62 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
+interface Message {
+  id: string;
+  author: string;
+  isAgent: boolean;
+  content: string;
+  timestamp: string;
+  channel: string;
+}
+
 const CHANNELS = [
   { id: 'general', label: 'General' },
-  { id: 'data-pipeline', label: 'Data Pipeline' },
-  { id: 'frontend-dashboard', label: 'Frontend Dashboard' },
-  { id: 'reporting-export', label: 'Reporting & Export' },
-];
-
-const MOCK_MESSAGES = [
-  {
-    id: 'm1',
-    author: 'Benjamin Life',
-    isAgent: false,
-    content:
-      'Just kicked off the subgraph integration. Kai, can you review the schema mapping when you get a chance?',
-    timestamp: new Date(Date.now() - 3 * 3600000).toISOString(),
-    channel: 'general',
-  },
-  {
-    id: 'm2',
-    author: 'Kai Torres',
-    isAgent: false,
-    content:
-      "On it — I'll have the review done by EOD. The Toucan subgraph has some quirks with the carbon bridge events.",
-    timestamp: new Date(Date.now() - 2.5 * 3600000).toISOString(),
-    channel: 'general',
-  },
-  {
-    id: 'm3',
-    author: 'CodeSwarm',
-    isAgent: true,
-    content:
-      "I've completed the initial data normalization layer. The schema handles Toucan, Klima, and Celo reserve formats. Unit tests passing at 94% coverage. Ready for review.\n\n```\n✓ 47 tests passed\n✗ 3 tests failing (edge cases with historical Klima rebases)\n```",
-    timestamp: new Date(Date.now() - 2 * 3600000).toISOString(),
-    channel: 'general',
-  },
-  {
-    id: 'm4',
-    author: 'Amara Osei',
-    isAgent: false,
-    content:
-      'Dashboard components are looking good. @ResearchBot can you draft the tooltip copy for the impact metrics? I want clear explanations for "carbon tonnes retired" vs "tonnes bridged."',
-    timestamp: new Date(Date.now() - 1 * 3600000).toISOString(),
-    channel: 'general',
-  },
-  {
-    id: 'm5',
-    author: 'ResearchBot',
-    isAgent: true,
-    content:
-      'Drafted tooltip copy based on Toucan and Verra documentation:\n\n- **Carbon Tonnes Retired**: Credits permanently removed from circulation, representing verified emission reductions\n- **Tonnes Bridged**: Credits moved on-chain but not yet retired, still tradeable\n\nShall I also draft copy for the KlimaDAO staking metrics?',
-    timestamp: new Date(Date.now() - 0.5 * 3600000).toISOString(),
-    channel: 'general',
-  },
 ];
 
 function getInitials(name: string) {
@@ -107,8 +65,17 @@ export default function DiscussionPage() {
   const contractId = params.contractId as string;
   const [activeChannel, setActiveChannel] = useState('general');
   const [messageText, setMessageText] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [contractTitle, setContractTitle] = useState('');
 
-  const filteredMessages = MOCK_MESSAGES.filter((m) => m.channel === activeChannel);
+  useEffect(() => {
+    fetch(`/api/contracts/${contractId}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data) setContractTitle(data.title); })
+      .catch(() => {});
+  }, [contractId]);
+
+  const filteredMessages = messages.filter((m) => m.channel === activeChannel);
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -117,7 +84,7 @@ export default function DiscussionPage() {
         <h1 className="text-2xl font-bold text-text-primary">Discussion</h1>
         <p className="text-text-secondary text-sm mt-1">
           <Link href={`/contracts/${contractId}`} className="hover:text-accent-squad transition-colors">
-            Regenerative Finance Dashboard
+            {contractTitle || 'Contract'}
           </Link>
         </p>
       </div>

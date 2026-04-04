@@ -11,18 +11,13 @@ interface SquadData {
   paymentMode: string;
 }
 
-const MOCK_SQUAD: SquadData = {
-  id: 'mock-squad-1',
-  name: 'Regen Builders',
-  revenueSplitDefault: { lead: 30, members: 50, treasury: 20 },
-  paymentMode: 'fiat',
-};
-
-const MOCK_TRANSACTIONS = [
-  { id: 't1', project: 'Regen Commons Dashboard', amount: 11000, status: 'completed', date: 'Mar 15, 2026' },
-  { id: 't2', project: 'Brand Blueprint Design', amount: 7500, status: 'completed', date: 'Feb 28, 2026' },
-  { id: 't3', project: 'Data Pipeline Integration', amount: 5000, status: 'in_progress', date: 'Active' },
-];
+interface Transaction {
+  id: string;
+  project: string;
+  amount: number;
+  status: string;
+  date: string;
+}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
@@ -43,7 +38,7 @@ export default function FinancialDashboardPage() {
         const data = await res.json();
         setSquad(data);
       } catch {
-        setSquad(MOCK_SQUAD);
+        // Leave squad as null on failure
       } finally {
         setLoading(false);
       }
@@ -67,10 +62,20 @@ export default function FinancialDashboardPage() {
     );
   }
 
-  if (!squad) return null;
+  if (!squad) {
+    return (
+      <div className="max-w-3xl">
+        <div className="bg-white rounded-xl border border-border p-12 text-center">
+          <h3 className="text-lg font-semibold mb-2">Unable to load financial data</h3>
+          <p className="text-text-secondary text-sm">No data yet. Please check your connection or try again later.</p>
+        </div>
+      </div>
+    );
+  }
 
-  const totalEarned = MOCK_TRANSACTIONS.reduce((sum, t) => sum + t.amount, 0);
-  const completedContracts = MOCK_TRANSACTIONS.filter((t) => t.status === 'completed').length;
+  const transactions: Transaction[] = [];
+  const totalEarned = transactions.reduce((sum, t) => sum + t.amount, 0);
+  const completedContracts = transactions.filter((t) => t.status === 'completed').length;
   const revenueSplit = (squad.revenueSplitDefault || { lead: 30, members: 50, treasury: 20 }) as Record<string, number>;
 
   return (
@@ -147,7 +152,13 @@ export default function FinancialDashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {MOCK_TRANSACTIONS.map((tx) => (
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-text-secondary text-sm">
+                    No transactions yet.
+                  </td>
+                </tr>
+              ) : transactions.map((tx) => (
                 <tr key={tx.id} className="border-b border-border last:border-0">
                   <td className="py-3 pr-4 font-medium text-text-primary">{tx.project}</td>
                   <td className="py-3 px-4 text-right font-semibold text-text-primary">{formatCurrency(tx.amount)}</td>

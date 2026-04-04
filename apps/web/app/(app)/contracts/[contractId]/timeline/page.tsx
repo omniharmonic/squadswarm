@@ -31,54 +31,6 @@ interface ContractData {
   workstreams: Workstream[];
 }
 
-const MOCK_CONTRACT: ContractData = {
-  id: 'mock-contract-1',
-  title: 'Regenerative Finance Dashboard',
-  status: 'active',
-  startedAt: new Date(Date.now() - 14 * 86400000).toISOString(),
-  workstreams: [
-    {
-      id: 'ws-1',
-      title: 'Data Pipeline',
-      description: 'Subgraph integration and data normalization',
-      status: 'in_progress',
-      startDate: new Date(Date.now() - 14 * 86400000).toISOString(),
-      endDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-      deliverables: [
-        { id: 'd1', title: 'Subgraph schema mapping', status: 'completed', assignee: 'CodeSwarm (Agent)', dueDate: new Date(Date.now() - 7 * 86400000).toISOString(), completedAt: new Date(Date.now() - 8 * 86400000).toISOString() },
-        { id: 'd2', title: 'Data normalization layer', status: 'completed', assignee: 'CodeSwarm (Agent)', dueDate: new Date(Date.now() - 3 * 86400000).toISOString(), completedAt: new Date(Date.now() - 4 * 86400000).toISOString() },
-        { id: 'd3', title: 'API endpoints', status: 'in_progress', assignee: 'Benjamin Life', dueDate: new Date(Date.now() + 3 * 86400000).toISOString(), completedAt: null },
-        { id: 'd4', title: 'Integration tests', status: 'not_started', assignee: 'CodeSwarm (Agent)', dueDate: new Date(Date.now() + 7 * 86400000).toISOString(), completedAt: null },
-      ],
-    },
-    {
-      id: 'ws-2',
-      title: 'Frontend Dashboard',
-      description: 'React components and data visualizations',
-      status: 'not_started',
-      startDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-      endDate: new Date(Date.now() + 21 * 86400000).toISOString(),
-      deliverables: [
-        { id: 'd5', title: 'Dashboard layout and navigation', status: 'not_started', assignee: 'Amara Osei', dueDate: new Date(Date.now() + 10 * 86400000).toISOString(), completedAt: null },
-        { id: 'd6', title: 'Carbon metrics visualizations', status: 'not_started', assignee: 'Amara Osei', dueDate: new Date(Date.now() + 14 * 86400000).toISOString(), completedAt: null },
-        { id: 'd7', title: 'Tooltip copy and UX writing', status: 'not_started', assignee: 'ResearchBot (Agent)', dueDate: new Date(Date.now() + 12 * 86400000).toISOString(), completedAt: null },
-      ],
-    },
-    {
-      id: 'ws-3',
-      title: 'Reporting & Export',
-      description: 'PDF export and scheduled reports',
-      status: 'not_started',
-      startDate: new Date(Date.now() + 18 * 86400000).toISOString(),
-      endDate: new Date(Date.now() + 28 * 86400000).toISOString(),
-      deliverables: [
-        { id: 'd8', title: 'PDF report template', status: 'not_started', assignee: 'Benjamin Life', dueDate: new Date(Date.now() + 22 * 86400000).toISOString(), completedAt: null },
-        { id: 'd9', title: 'Scheduled export system', status: 'not_started', assignee: 'CodeSwarm (Agent)', dueDate: new Date(Date.now() + 26 * 86400000).toISOString(), completedAt: null },
-      ],
-    },
-  ],
-};
-
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   completed: { label: 'Completed', color: 'text-success', bg: 'bg-success' },
   in_progress: { label: 'In Progress', color: 'text-accent-client', bg: 'bg-accent-client' },
@@ -106,7 +58,7 @@ export default function TimelinePage() {
         const data = await res.json();
         setContract(data);
       } catch {
-        setContract(MOCK_CONTRACT);
+        // Leave contract as null on failure
       } finally {
         setLoading(false);
       }
@@ -129,7 +81,19 @@ export default function TimelinePage() {
     );
   }
 
-  if (!contract) return null;
+  if (!contract) {
+    return (
+      <div className="max-w-3xl">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-text-primary">Timeline</h1>
+        </div>
+        <div className="bg-white rounded-xl border border-border p-12 text-center">
+          <h3 className="text-lg font-semibold mb-2">Unable to load contract data</h3>
+          <p className="text-text-secondary text-sm">No data yet. Please check your connection or try again later.</p>
+        </div>
+      </div>
+    );
+  }
 
   const allDeliverables = contract.workstreams.flatMap((ws) => ws.deliverables);
   const completedCount = allDeliverables.filter((d) => d.status === 'completed').length;

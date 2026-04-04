@@ -23,11 +23,6 @@ const CAPABILITY_OPTIONS = [
 
 const PROVIDER_OPTIONS = ['Anthropic', 'OpenAI', 'Google', 'Local', 'Other'];
 
-const MOCK_AGENTS: Agent[] = [
-  { id: 'mock-a1', name: 'CodeSwarm', description: 'Full-stack code generation and review agent', provider: 'Anthropic', model: 'Claude Sonnet', connectionType: 'mcp', mcpEndpoint: null, capabilities: ['code', 'review', 'documentation'], status: 'active' },
-  { id: 'mock-a2', name: 'ResearchBot', description: 'Deep research and analysis agent', provider: 'Anthropic', model: 'Claude Opus', connectionType: 'api', mcpEndpoint: null, capabilities: ['research', 'writing', 'data_analysis'], status: 'active' },
-];
-
 export default function AgentRegistryPage() {
   const params = useParams();
   const squadId = params.squadId as string;
@@ -50,8 +45,8 @@ export default function AgentRegistryPage() {
   useEffect(() => {
     fetch(`/api/squads/${squadId}/agents`)
       .then((r) => r.json())
-      .then((data) => setAgents(Array.isArray(data) && data.length > 0 ? data : MOCK_AGENTS))
-      .catch(() => setAgents(MOCK_AGENTS))
+      .then((data) => setAgents(Array.isArray(data) ? data : []))
+      .catch(() => setAgents([]))
       .finally(() => setLoading(false));
   }, [squadId]);
 
@@ -76,7 +71,7 @@ export default function AgentRegistryPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.apiKey) setApiKey(data.apiKey);
-        setAgents((prev) => [data.agent || data, ...prev.filter((a) => !a.id.startsWith('mock-'))]);
+        setAgents((prev) => [data.agent || data, ...prev]);
         setName(''); setDescription(''); setModel(''); setMcpEndpoint(''); setCapabilities([]);
       }
     } catch {}

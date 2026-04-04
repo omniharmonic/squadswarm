@@ -4,39 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
-const MOCK_CONTRACT = {
-  id: 'mock-contract-1',
-  title: 'Regenerative Finance Dashboard',
-  workstreams: [
-    {
-      id: 'ws-1',
-      title: 'Data Pipeline',
-      deliverables: [
-        { id: 'd-1', title: 'Subgraph Integration', status: 'approved', format: 'codebase', assignee: 'Kai Torres' },
-        { id: 'd-2', title: 'Data Normalization Layer', status: 'in_progress', format: 'codebase', assignee: 'CodeSwarm (Agent)' },
-        { id: 'd-3', title: 'API Documentation', status: 'not_started', format: 'document', assignee: 'ResearchBot (Agent)' },
-      ],
-    },
-    {
-      id: 'ws-2',
-      title: 'Frontend Dashboard',
-      deliverables: [
-        { id: 'd-4', title: 'Dashboard UI Components', status: 'in_review', format: 'codebase', assignee: 'Amara Osei' },
-        { id: 'd-5', title: 'Chart Visualizations', status: 'in_progress', format: 'codebase', assignee: 'Benjamin Life' },
-        { id: 'd-6', title: 'Mobile Responsive Layout', status: 'not_started', format: 'design', assignee: 'Amara Osei' },
-      ],
-    },
-    {
-      id: 'ws-3',
-      title: 'Reporting & Export',
-      deliverables: [
-        { id: 'd-7', title: 'PDF Report Generator', status: 'not_started', format: 'codebase', assignee: 'CodeSwarm (Agent)' },
-        { id: 'd-8', title: 'Quarterly Report Template', status: 'blocked', format: 'document', assignee: 'ResearchBot (Agent)' },
-      ],
-    },
-  ],
-};
-
 type DeliverableWithWorkstream = {
   id: string;
   title: string;
@@ -91,12 +58,9 @@ function getInitials(name: string) {
 export default function KanbanBoardPage() {
   const params = useParams();
   const contractId = params.contractId as string;
-  const [contractTitle, setContractTitle] = useState(MOCK_CONTRACT.title);
-  const [allDeliverables, setAllDeliverables] = useState<DeliverableWithWorkstream[]>(() =>
-    MOCK_CONTRACT.workstreams.flatMap((ws) =>
-      ws.deliverables.map((d) => ({ ...d, workstream: ws.title }))
-    )
-  );
+  const [contractTitle, setContractTitle] = useState('');
+  const [allDeliverables, setAllDeliverables] = useState<DeliverableWithWorkstream[]>([]);
+  const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const fetchDeliverables = useCallback(async () => {
@@ -107,18 +71,18 @@ export default function KanbanBoardPage() {
         const flattened = data.flatMap((ws) =>
           ws.deliverables.map((d) => ({ ...d, workstream: ws.title }))
         );
-        if (flattened.length > 0) {
-          setAllDeliverables(flattened);
-        }
-        // Try to get contract title
-        const contractRes = await fetch(`/api/contracts/${contractId}`);
-        if (contractRes.ok) {
-          const contractData = await contractRes.json();
-          setContractTitle(contractData.title);
-        }
+        setAllDeliverables(flattened);
+      }
+      // Try to get contract title
+      const contractRes = await fetch(`/api/contracts/${contractId}`);
+      if (contractRes.ok) {
+        const contractData = await contractRes.json();
+        setContractTitle(contractData.title);
       }
     } catch {
-      // Keep mock data as fallback
+      // Leave deliverables empty on failure
+    } finally {
+      setLoading(false);
     }
   }, [contractId]);
 
@@ -152,6 +116,35 @@ export default function KanbanBoardPage() {
     }
     return allDeliverables.filter((d) => d.status === columnKey);
   };
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-8 h-8 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  if (allDeliverables.length === 0) {
+    return (
+      <div>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-text-primary">Kanban Board</h1>
+          {contractTitle && (
+            <p className="text-text-secondary text-sm mt-1">
+              <Link href={`/contracts/${contractId}`} className="hover:text-accent-squad transition-colors">
+                {contractTitle}
+              </Link>
+            </p>
+          )}
+        </div>
+        <div className="bg-white rounded-xl border border-border p-12 text-center">
+          <h3 className="text-lg font-semibold mb-2">No deliverables yet</h3>
+          <p className="text-text-secondary text-sm">Deliverables will appear here once they are added to this contract.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

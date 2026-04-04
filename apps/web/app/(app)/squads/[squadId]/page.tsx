@@ -31,38 +31,6 @@ interface SquadDetail {
   agents: Agent[];
 }
 
-const MOCK_SQUAD: SquadDetail = {
-  id: 'mock-1',
-  name: 'Regen Builders',
-  bio: 'A cooperative squad building regenerative technology infrastructure.',
-  missionStatement: 'Building the infrastructure for a regenerative economy.',
-  governanceModel: { model: 'consent' },
-  trustScore: '85.00',
-  members: [
-    { userId: '1', displayName: 'Benjamin Life', email: 'ben@regen.build', role: 'admin' },
-    { userId: '2', displayName: 'Kai Torres', email: 'kai@regen.build', role: 'member' },
-    { userId: '3', displayName: 'Amara Osei', email: 'amara@regen.build', role: 'member' },
-  ],
-  agents: [
-    {
-      id: 'a1',
-      name: 'CodeSwarm',
-      provider: 'Anthropic',
-      model: 'Claude Sonnet',
-      capabilities: ['code', 'review', 'documentation'],
-      status: 'active',
-    },
-    {
-      id: 'a2',
-      name: 'ResearchBot',
-      provider: 'Anthropic',
-      model: 'Claude Opus',
-      capabilities: ['research', 'analysis', 'writing'],
-      status: 'active',
-    },
-  ],
-};
-
 export default function SquadProfilePage() {
   const params = useParams();
   const [squad, setSquad] = useState<SquadDetail | null>(null);
@@ -71,8 +39,8 @@ export default function SquadProfilePage() {
   useEffect(() => {
     fetch(`/api/squads/${params.squadId}`)
       .then((res) => res.json())
-      .then((data) => setSquad(data.error ? MOCK_SQUAD : { ...MOCK_SQUAD, ...data }))
-      .catch(() => setSquad(MOCK_SQUAD))
+      .then((data) => { if (!data.error) setSquad(data); })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [params.squadId]);
 
@@ -84,7 +52,16 @@ export default function SquadProfilePage() {
     );
   }
 
-  if (!squad) return null;
+  if (!squad) {
+    return (
+      <div className="max-w-4xl">
+        <div className="bg-white rounded-xl border border-border p-12 text-center">
+          <h3 className="text-lg font-semibold mb-2">Unable to load squad</h3>
+          <p className="text-text-secondary text-sm">No data yet. Please check your connection or try again later.</p>
+        </div>
+      </div>
+    );
+  }
 
   const governance = squad.governanceModel as { model: string } | null;
 

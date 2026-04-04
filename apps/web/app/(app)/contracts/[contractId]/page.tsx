@@ -51,49 +51,6 @@ function StarDisplay({ value, label }: { value: number; label: string }) {
   );
 }
 
-const MOCK_CONTRACT = {
-  id: 'mock-contract-1',
-  title: 'Regenerative Finance Dashboard',
-  status: 'active',
-  clientName: 'Climate DAO',
-  squadName: 'Regen Builders',
-  totalAmount: '12000.00',
-  feedbackRoundsTotal: 3,
-  feedbackRoundsUsed: 0,
-  startedAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-  workstreams: [
-    {
-      id: 'ws-1',
-      title: 'Data Pipeline',
-      status: 'in_progress',
-      deliverables: [
-        { id: 'd-1', title: 'Subgraph Integration', status: 'approved', format: 'codebase', assignee: 'Kai Torres' },
-        { id: 'd-2', title: 'Data Normalization Layer', status: 'in_progress', format: 'codebase', assignee: 'CodeSwarm (Agent)' },
-        { id: 'd-3', title: 'API Documentation', status: 'not_started', format: 'document', assignee: 'ResearchBot (Agent)' },
-      ],
-    },
-    {
-      id: 'ws-2',
-      title: 'Frontend Dashboard',
-      status: 'not_started',
-      deliverables: [
-        { id: 'd-4', title: 'Dashboard UI Components', status: 'in_review', format: 'codebase', assignee: 'Amara Osei' },
-        { id: 'd-5', title: 'Chart Visualizations', status: 'in_progress', format: 'codebase', assignee: 'Benjamin Life' },
-        { id: 'd-6', title: 'Mobile Responsive Layout', status: 'not_started', format: 'design', assignee: 'Amara Osei' },
-      ],
-    },
-    {
-      id: 'ws-3',
-      title: 'Reporting & Export',
-      status: 'not_started',
-      deliverables: [
-        { id: 'd-7', title: 'PDF Report Generator', status: 'not_started', format: 'codebase', assignee: 'CodeSwarm (Agent)' },
-        { id: 'd-8', title: 'Quarterly Report Template', status: 'blocked', format: 'document', assignee: 'ResearchBot (Agent)' },
-      ],
-    },
-  ],
-};
-
 const STATUS_STYLES: Record<string, string> = {
   pending_deposit: 'bg-accent-client/10 text-accent-client',
   active: 'bg-success/10 text-success',
@@ -152,7 +109,7 @@ interface Dispute {
 export default function ContractOverviewPage() {
   const params = useParams();
   const contractId = params.contractId as string;
-  const [contract, setContract] = useState<Contract>(MOCK_CONTRACT);
+  const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
   const [funding, setFunding] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
@@ -250,7 +207,7 @@ export default function ContractOverviewPage() {
         });
       }
     } catch {
-      // Keep mock data as fallback
+      // Leave contract as null on failure
     } finally {
       setLoading(false);
     }
@@ -336,11 +293,22 @@ export default function ContractOverviewPage() {
   }
 
   useEffect(() => {
-    if (contract.status === 'disputed') {
+    if (contract?.status === 'disputed') {
       fetchDisputes();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contract.status]);
+  }, [contract?.status]);
+
+  if (!contract) {
+    return (
+      <div className="max-w-5xl">
+        <div className="bg-white rounded-xl border border-border p-12 text-center">
+          <h3 className="text-lg font-semibold mb-2">Unable to load contract data</h3>
+          <p className="text-text-secondary text-sm">No data yet. Please check your connection or try again later.</p>
+        </div>
+      </div>
+    );
+  }
 
   const allDeliverables = contract.workstreams.flatMap((ws) => ws.deliverables);
   const approvedCount = allDeliverables.filter((d) => d.status === 'approved').length;

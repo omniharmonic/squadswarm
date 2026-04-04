@@ -43,19 +43,6 @@ const PERMISSION_MATRIX = [
   { action: 'Financial Decisions', consent: 'Consent required', majority: 'Majority vote', delegated: 'Finance delegate' },
 ];
 
-const MOCK_DECISIONS = [
-  { id: 'gd1', description: 'Bid #1234 submitted', outcome: 'Approved by consent', date: '2 days ago', status: 'approved' },
-  { id: 'gd2', description: 'New member Kai Torres invited', outcome: 'Approved by majority (3/4)', date: '5 days ago', status: 'approved' },
-  { id: 'gd3', description: 'ResearchBot agent added', outcome: 'No objections raised', date: '1 week ago', status: 'approved' },
-  { id: 'gd4', description: 'Revenue split adjustment', outcome: 'Pending — 1 day remaining', date: '12 hours ago', status: 'pending' },
-];
-
-const MOCK_SQUAD: SquadData = {
-  id: 'mock-squad-1',
-  name: 'Regen Builders',
-  governanceModel: { type: 'consent' },
-};
-
 export default function GovernanceSettingsPage() {
   const params = useParams();
   const squadId = params.squadId as string;
@@ -75,8 +62,7 @@ export default function GovernanceSettingsPage() {
         const model = data.governanceModel as GovernanceModel;
         setSelectedModel(model?.type || 'consent');
       } catch {
-        setSquad(MOCK_SQUAD);
-        setSelectedModel(MOCK_SQUAD.governanceModel.type);
+        // Leave squad as null on failure
       } finally {
         setLoading(false);
       }
@@ -110,7 +96,16 @@ export default function GovernanceSettingsPage() {
     );
   }
 
-  if (!squad) return null;
+  if (!squad) {
+    return (
+      <div className="max-w-3xl">
+        <div className="bg-white rounded-xl border border-border p-12 text-center">
+          <h3 className="text-lg font-semibold mb-2">Unable to load governance settings</h3>
+          <p className="text-text-secondary text-sm">No data yet. Please check your connection or try again later.</p>
+        </div>
+      </div>
+    );
+  }
 
   const model = squad.governanceModel as GovernanceModel;
   const currentType = model?.type || 'consent';
@@ -238,23 +233,7 @@ export default function GovernanceSettingsPage() {
         <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">
           Recent Governance Decisions
         </h2>
-        <div className="space-y-3">
-          {MOCK_DECISIONS.map((decision) => (
-            <div key={decision.id} className="flex items-start gap-3 py-2">
-              <div
-                className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                  decision.status === 'approved' ? 'bg-success' : 'bg-accent-client'
-                }`}
-              />
-              <div className="flex-1">
-                <p className="text-sm text-text-primary">{decision.description}</p>
-                <p className="text-xs text-text-secondary">
-                  {decision.outcome} &middot; {decision.date}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="text-text-secondary text-sm text-center py-4">No governance decisions yet.</p>
       </section>
     </div>
   );

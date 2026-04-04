@@ -12,23 +12,6 @@ interface Squad {
   role: string;
 }
 
-const MOCK_SQUADS: Squad[] = [
-  {
-    id: 'mock-1',
-    name: 'Regen Builders',
-    bio: 'A cooperative squad building regenerative technology infrastructure.',
-    trustScore: '85.00',
-    role: 'admin',
-  },
-  {
-    id: 'mock-2',
-    name: 'Impact Labs',
-    bio: 'Research and development for social impact solutions.',
-    trustScore: '72.50',
-    role: 'member',
-  },
-];
-
 export default function MySquadsPage() {
   const [squads, setSquads] = useState<Squad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,9 +20,9 @@ export default function MySquadsPage() {
     fetch('/api/squads')
       .then((res) => res.json())
       .then((data) => {
-        setSquads(Array.isArray(data) && data.length > 0 ? data : MOCK_SQUADS);
+        setSquads(Array.isArray(data) ? data : []);
       })
-      .catch(() => setSquads(MOCK_SQUADS))
+      .catch(() => setSquads([]))
       .finally(() => setLoading(false));
   }, []);
 
