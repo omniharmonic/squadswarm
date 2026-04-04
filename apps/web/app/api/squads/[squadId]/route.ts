@@ -34,6 +34,7 @@ export async function GET(
     .where(eq(squadMembers.squadId, squadId));
 
   let agentCount = 0;
+  let agentList: (typeof agents.$inferSelect)[] = [];
   if (memberIds.length > 0) {
     const [result] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -45,12 +46,23 @@ export async function GET(
         )})`
       );
     agentCount = result?.count ?? 0;
+
+    agentList = await db
+      .select()
+      .from(agents)
+      .where(
+        sql`${agents.ownerId} IN (${sql.join(
+          memberIds.map(m => sql`${m.userId}`),
+          sql`, `
+        )})`
+      );
   }
 
   return NextResponse.json({
     ...squad,
     membersCount: membersCount?.count ?? 0,
     agentCount,
+    agents: agentList,
   });
 }
 

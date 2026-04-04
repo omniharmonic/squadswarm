@@ -15,6 +15,13 @@
       "when": 1775330150173,
       "tag": "0001_narrow_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775343799806,
+      "tag": "0002_heavy_goliath",
+      "breakpoints": true
     }
   ]
 }

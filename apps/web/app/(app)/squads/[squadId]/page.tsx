@@ -29,8 +29,8 @@ interface SquadDetail {
   trustScore: string;
   multisigAddress: string | null;
   paymentMode: string;
-  members: Member[];
-  agents: Agent[];
+  members?: Member[];
+  agents?: Agent[];
 }
 
 function isValidEthAddress(addr: string): boolean {
@@ -40,6 +40,8 @@ function isValidEthAddress(addr: string): boolean {
 export default function SquadProfilePage() {
   const params = useParams();
   const [squad, setSquad] = useState<SquadDetail | null>(null);
+  // Ensure agents/members are always arrays after setting squad data
+  const safeSquad = squad ? { ...squad, agents: squad.agents ?? [], members: squad.members ?? [] } : null;
   const [loading, setLoading] = useState(true);
 
   // Multisig address editing
@@ -74,12 +76,11 @@ export default function SquadProfilePage() {
                 role: m.role,
               })),
             } : prev);
-            // Check admin status via a lightweight approach: try PATCH with empty body
-            // Actually, we'll use a simpler signal: fetch /api/auth/me and compare
-            const authRes = await fetch('/api/auth/me');
+            // Check admin status by fetching the current user
+            const authRes = await fetch('/api/users/me');
             if (authRes.ok) {
               const authData = await authRes.json();
-              const currentMember = members.find((m: { userId: string }) => m.userId === authData.userId);
+              const currentMember = members.find((m: { userId: string }) => m.userId === authData.id);
               setIsAdmin(currentMember?.role === 'admin');
             }
           }
@@ -130,7 +131,7 @@ export default function SquadProfilePage() {
     );
   }
 
-  if (!squad) {
+  if (!safeSquad) {
     return (
       <div className="max-w-4xl">
         <div className="bg-white rounded-xl border border-border p-12 text-center">
@@ -141,7 +142,7 @@ export default function SquadProfilePage() {
     );
   }
 
-  const governance = squad.governanceModel as { model: string } | null;
+  const governance = safeSquad.governanceModel as { model: string } | null;
 
   return (
     <div className="max-w-4xl">
@@ -150,22 +151,22 @@ export default function SquadProfilePage() {
         <div className="flex items-start gap-4">
           <div className="w-16 h-16 bg-accent-squad/10 rounded-xl flex items-center justify-center shrink-0">
             <span className="text-accent-squad font-bold text-2xl">
-              {squad.name.charAt(0)}
+              {safeSquad.name.charAt(0)}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold">{squad.name}</h1>
-            {squad.bio && <p className="text-text-secondary mt-1">{squad.bio}</p>}
-            {squad.missionStatement && (
+            <h1 className="text-2xl font-bold">{safeSquad.name}</h1>
+            {safeSquad.bio && <p className="text-text-secondary mt-1">{safeSquad.bio}</p>}
+            {safeSquad.missionStatement && (
               <p className="text-sm text-text-secondary mt-2 italic">
-                &ldquo;{squad.missionStatement}&rdquo;
+                &ldquo;{safeSquad.missionStatement}&rdquo;
               </p>
             )}
             <div className="flex items-center gap-4 mt-3 text-sm">
               <span className="text-text-secondary">
                 Trust Score:{' '}
                 <span className="font-semibold text-text-primary">
-                  {parseFloat(squad.trustScore).toFixed(0)}
+                  {parseFloat(safeSquad.trustScore).toFixed(0)}
                 </span>
               </span>
               {governance && (
@@ -174,7 +175,7 @@ export default function SquadProfilePage() {
                 </span>
               )}
               <span className="text-text-secondary">
-                {squad.members.length} members
+                {safeSquad.members.length} members
               </span>
             </div>
           </div>
@@ -188,7 +189,7 @@ export default function SquadProfilePage() {
           {isAdmin && !editingAddress && (
             <button
               onClick={() => {
-                setAddressInput(squad.multisigAddress || '');
+                setAddressInput(safeSquad.multisigAddress || '');
                 setEditingAddress(true);
                 setAddressError('');
               }}
@@ -228,7 +229,7 @@ export default function SquadProfilePage() {
               </button>
             </div>
           </div>
-        ) : squad.multisigAddress ? (
+        ) : safeSquad.multisigAddress ? (
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-escrow/10 rounded-lg flex items-center justify-center shrink-0">
               <svg className="w-5 h-5 text-escrow" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -236,11 +237,11 @@ export default function SquadProfilePage() {
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-mono text-text-primary truncate">{squad.multisigAddress}</p>
+              <p className="text-sm font-mono text-text-primary truncate">{safeSquad.multisigAddress}</p>
               <p className="text-xs text-text-secondary mt-0.5">
-                {squad.paymentMode === 'crypto' ? 'USDC on Base' : 'Multisig wallet'}{' '}
+                {safeSquad.paymentMode === 'crypto' ? 'USDC on Base' : 'Multisig wallet'}{' '}
                 <a
-                  href={`https://basescan.org/address/${squad.multisigAddress}`}
+                  href={`https://basescan.org/address/${safeSquad.multisigAddress}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-accent-agent hover:underline"
@@ -266,7 +267,7 @@ export default function SquadProfilePage() {
             <button className="text-sm text-accent-squad hover:underline">Invite</button>
           </div>
           <div className="space-y-3">
-            {squad.members.map((m) => (
+            {safeSquad.members.map((m) => (
               <div key={m.userId} className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-bg-secondary rounded-full flex items-center justify-center shrink-0">
                   <span className="text-sm font-medium">
@@ -299,14 +300,14 @@ export default function SquadProfilePage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Agents (Swarm)</h2>
             <Link
-              href={`/squads/${squad.id}/agents`}
+              href={`/squads/${safeSquad.id}/agents`}
               className="text-sm text-accent-agent hover:underline"
             >
               Manage
             </Link>
           </div>
           <div className="space-y-3">
-            {squad.agents.map((a) => (
+            {safeSquad.agents.map((a) => (
               <div key={a.id} className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-accent-agent/10 rounded-lg flex items-center justify-center shrink-0 rotate-45 border border-accent-agent/20">
                   <span className="text-accent-agent text-xs font-bold -rotate-45">
@@ -331,7 +332,7 @@ export default function SquadProfilePage() {
                 </div>
               </div>
             ))}
-            {squad.agents.length === 0 && (
+            {safeSquad.agents.length === 0 && (
               <p className="text-text-secondary text-sm text-center py-4">
                 No agents registered yet.
               </p>

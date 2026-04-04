@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { createWalletClient, custom, type WalletClient, type Address } from 'viem';
 import { base } from 'viem/chains';
 
@@ -9,7 +9,7 @@ interface Web3Context {
   address: Address | null;
   isConnected: boolean;
   connecting: boolean;
-  connect: () => Promise<void>;
+  connect: () => Promise<Address | null>;
   disconnect: () => void;
 }
 
@@ -18,7 +18,7 @@ const Web3Ctx = createContext<Web3Context>({
   address: null,
   isConnected: false,
   connecting: false,
-  connect: async () => {},
+  connect: async () => null,
   disconnect: () => {},
 });
 
@@ -32,14 +32,32 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   const [connecting, setConnecting] = useState(false);
   const pendingRef = useRef(false);
 
-  const connect = useCallback(async () => {
+  // Auto-reconnect on mount if wallet was previously connected
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.ethereum) {
+      window.ethereum.request({ method: 'eth_accounts' }).then((accounts: unknown) => {
+        const accts = accounts as Address[];
+        if (accts.length > 0) {
+          const client = createWalletClient({
+            account: accts[0],
+            chain: base,
+            transport: custom(window.ethereum!),
+          });
+          setWalletClient(client);
+          setAddress(accts[0]!);
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  const connect = useCallback(async (): Promise<Address | null> => {
     if (typeof window === 'undefined' || !window.ethereum) {
       throw new Error('No wallet detected. Please install MetaMask or another wallet.');
     }
 
     // Prevent duplicate requests
     if (pendingRef.current) {
-      return;
+      return null;
     }
 
     pendingRef.current = true;
@@ -55,12 +73,13 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
       setWalletClient(client);
       setAddress(addr!);
+      return addr!;
     } catch (err: unknown) {
       // Handle "request already pending" error gracefully
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('already pending') || message.includes('Already processing')) {
         // Silently ignore — MetaMask popup is already open
-        return;
+        return null;
       }
       throw err;
     } finally {

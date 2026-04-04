@@ -16,3 +16,4 @@ export { disputes } from './disputes';
 export { aiUsageLogs } from './ai-usage-logs';
 export { notifications } from './notifications';
 export { magicLinks } from './magic-links';
+export { attestations } from './attestations';

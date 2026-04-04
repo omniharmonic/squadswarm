@@ -1,34 +1,64 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, sql } from 'drizzle-orm';
-import { db, contracts, deliverables, activityLog, squads, squadMembers, users } from '@squadswarm/db';
+import { eq, and, sql } from 'drizzle-orm';
+import { db, contracts, deliverables, activityLog, squadMembers, squads, users } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 
 /**
- * Stub: In production this would call Stripe to release held funds.
+ * Log that the on-chain USDC release should be triggered.
+ * Actual fund release happens client-side via the SquadSwarmEscrow contract on Base.
  */
-async function releaseStripePayment(_contractId: string, _amount: string): Promise<void> {
-  // Stripe release stub — no-op until API key is configured
-  console.log(`[Stripe Stub] Releasing payment for contract ${_contractId}: $${_amount}`);
+async function logPaymentRelease(_contractId: string, _amount: string): Promise<void> {
+  console.log(`[Crypto] Contract ${_contractId} completed — $${_amount} USDC release pending on Base`);
 }
 
 /**
  * Recalculate trust scores for all squad members and the squad itself.
- * Simple formula: base score + completed contracts bonus.
+ * Formula: base 50 + 10 per completed contract + rating adjustments (+5 per 4-5 star, -5 per 1-2 star). Capped at [0, 100].
  */
 async function recalculateTrustScores(squadId: string): Promise<void> {
   try {
     // Count completed contracts for this squad
-    const completedContracts = await db
+    const squadContracts = await db
       .select()
       .from(contracts)
       .where(eq(contracts.squadId, squadId));
 
-    const completedCount = completedContracts.filter((c) => c.status === 'completed').length;
+    const completedCount = squadContracts.filter((c) => c.status === 'completed').length;
 
-    // Simple trust score: 50 base + 10 per completed contract, capped at 100
-    const squadScore = Math.min(100, 50 + completedCount * 10);
+    // Gather all ratings for contracts in this squad
+    const completedContractIds = squadContracts
+      .filter((c) => c.status === 'completed')
+      .map((c) => c.id);
+
+    let positiveRatings = 0;
+    let negativeRatings = 0;
+
+    for (const cId of completedContractIds) {
+      const [ratingEntry] = await db
+        .select()
+        .from(activityLog)
+        .where(
+          and(
+            eq(activityLog.contractId, cId),
+            eq(activityLog.action, 'contract_rated')
+          )
+        )
+        .limit(1);
+
+      if (ratingEntry) {
+        const meta = ratingEntry.metadata as Record<string, unknown>;
+        const overall = Number(meta.overall);
+        if (overall >= 4) positiveRatings++;
+        else if (overall <= 2) negativeRatings++;
+      }
+    }
+
+    const ratingBonus = positiveRatings * 5 - negativeRatings * 5;
+
+    // Squad score: 50 base + 10 per completed contract + rating adjustments
+    const squadScore = Math.max(0, Math.min(100, 50 + completedCount * 10 + ratingBonus));
 
     await db
       .update(squads)
@@ -42,8 +72,7 @@ async function recalculateTrustScores(squadId: string): Promise<void> {
       .where(eq(squadMembers.squadId, squadId));
 
     for (const member of members) {
-      // Count contracts where user's squad was involved
-      const memberScore = Math.min(100, 50 + completedCount * 8);
+      const memberScore = Math.max(0, Math.min(100, 50 + completedCount * 8 + ratingBonus));
       await db
         .update(users)
         .set({ trustScore: sql`GREATEST(${String(memberScore)}::numeric, ${users.trustScore})`, updatedAt: new Date() })
@@ -92,21 +121,10 @@ export async function POST(
     }, { status: 400 });
   }
 
-  // Determine payment mode from squad
-  const [squad] = await db
-    .select({ paymentMode: squads.paymentMode })
-    .from(squads)
-    .where(eq(squads.id, contract.squadId))
-    .limit(1);
-
-  const paymentMode = squad?.paymentMode || 'fiat';
-
-  // Release payment based on mode
-  if (paymentMode === 'fiat') {
-    await releaseStripePayment(contractId, contract.totalAmount);
-  }
-  // For crypto mode: on-chain release is initiated by the client's wallet.
-  // The contract completion here just records it server-side.
+  // All payments are crypto-native (USDC on Base).
+  // On-chain release is initiated by the client's wallet via the escrow contract.
+  // This endpoint records the server-side state change.
+  await logPaymentRelease(contractId, contract.totalAmount);
 
   // Mark contract as completed
   const [updated] = await db
@@ -125,7 +143,7 @@ export async function POST(
       entityId: contractId,
       metadata: {
         totalAmount: contract.totalAmount,
-        paymentMode,
+        paymentMode: 'crypto',
         deliverablesCount: pendingDeliverables.length,
         completedAt: new Date().toISOString(),
       },
@@ -137,6 +155,15 @@ export async function POST(
 
   // Trigger trust score recalculation for all participants
   await recalculateTrustScores(contract.squadId);
+
+  // Create EAS attestations (off-chain for now, on-chain when both parties have wallets)
+  try {
+    const { createContractAttestations } = await import('@/lib/attestation-service');
+    await createContractAttestations(contractId);
+  } catch (attestError) {
+    console.error('Attestation creation error:', attestError);
+    // Non-fatal
+  }
 
   return NextResponse.json(updated);
 }

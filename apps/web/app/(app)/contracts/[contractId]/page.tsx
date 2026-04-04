@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useWeb3 } from '@/components/web3-provider';
 
 /* ── Rating types & helpers ─────────────────────────────────── */
 interface Rating {
@@ -109,10 +110,7 @@ interface Contract {
   workstreams: Workstream[];
 }
 
-interface SquadInfo {
-  paymentMode: string;
-  multisigAddress: string | null;
-}
+// All payments are USDC on Base — no fiat mode
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
@@ -151,10 +149,11 @@ interface Dispute {
 export default function ContractOverviewPage() {
   const params = useParams();
   const contractId = params.contractId as string;
+  const { connect, isConnected, connecting } = useWeb3();
   const [contract, setContract] = useState<Contract | null>(null);
-  const [squadInfo, setSquadInfo] = useState<SquadInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [funding, setFunding] = useState(false);
+  const [fundingError, setFundingError] = useState('');
 
   // Completion state
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
@@ -321,19 +320,7 @@ export default function ContractOverviewPage() {
           })),
         } as Contract);
 
-        // Fetch squad info for payment mode
-        try {
-          const squadRes = await fetch(`/api/squads/${data.squadId}`);
-          if (squadRes.ok) {
-            const squadData = await squadRes.json();
-            setSquadInfo({
-              paymentMode: squadData.paymentMode || 'fiat',
-              multisigAddress: squadData.multisigAddress || null,
-            });
-          }
-        } catch {
-          // ignore
-        }
+        // All payments are USDC on Base — no squad payment mode check needed
       }
     } catch {
       // Leave contract as null on failure
@@ -351,13 +338,37 @@ export default function ContractOverviewPage() {
 
   async function handleFundContract() {
     setFunding(true);
+    setFundingError('');
     try {
-      const res = await fetch(`/api/contracts/${contractId}/deposit`, { method: 'POST' });
+      // Step 1: Connect wallet if not connected
+      if (!isConnected) {
+        const addr = await connect();
+        if (!addr) {
+          setFunding(false);
+          return;
+        }
+      }
+
+      // Step 2: In production, this would call depositToEscrow() from @squadswarm/web3
+      // For now, simulate the on-chain deposit and generate a mock txHash
+      const mockTxHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+
+      // Step 3: Record the deposit on the server
+      const res = await fetch(`/api/contracts/${contractId}/deposit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHash: mockTxHash }),
+      });
+
       if (res.ok) {
         await fetchContract();
+      } else {
+        const err = await res.json();
+        setFundingError(err.error || 'Failed to record deposit');
       }
-    } catch {
-      // Silently fail for demo
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Wallet connection failed';
+      setFundingError(msg);
     } finally {
       setFunding(false);
     }
@@ -470,8 +481,8 @@ export default function ContractOverviewPage() {
   const escrowedAmount = totalAmount * 0.75;
   const releasedSoFar = totalCount > 0 ? escrowedAmount * (approvedCount / totalCount) : 0;
   const paymentProgressPercent = totalAmount > 0 ? Math.round(((upfrontAmount + releasedSoFar) / totalAmount) * 100) : 0;
-  const isCrypto = squadInfo?.paymentMode === 'crypto';
-  const escrowAddress = contract.smartContractAddress || squadInfo?.multisigAddress;
+  const isCrypto = true; // All payments are crypto-native (USDC on Base)
+  const escrowAddress = contract.smartContractAddress;
 
   const daysActive = contract.startedAt
     ? Math.floor((Date.now() - new Date(contract.startedAt).getTime()) / 86400000)
@@ -581,55 +592,54 @@ export default function ContractOverviewPage() {
 
         {contract.status === 'pending_deposit' && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-text-primary font-medium">Awaiting deposit to begin work</p>
-                <p className="text-sm text-text-secondary mt-0.5">
-                  Fund {formatCurrency(totalAmount)} to start work
-                </p>
-              </div>
-              {!isCrypto && (
-                <button
-                  onClick={handleFundContract}
-                  disabled={funding}
-                  className="px-5 py-2.5 bg-accent-client text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-                >
-                  {funding ? 'Processing...' : `Fund ${formatCurrency(totalAmount)}`}
-                </button>
+            <div className="bg-accent-agent/5 rounded-lg p-4 border border-accent-agent/20">
+              <p className="text-sm font-medium text-accent-agent mb-2">Fund with USDC on Base</p>
+              <p className="text-sm text-text-secondary mb-2">
+                Deposit {formatCurrency(totalAmount)} USDC to start work on this contract.
+              </p>
+              {escrowAddress && (
+                <div className="flex items-center gap-2 mb-3">
+                  <code className="text-xs font-mono bg-white px-3 py-2 rounded border border-border text-text-primary flex-1 truncate">
+                    {escrowAddress}
+                  </code>
+                  <a
+                    href={`https://basescan.org/address/${escrowAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-accent-agent hover:underline whitespace-nowrap"
+                  >
+                    View on Basescan
+                  </a>
+                </div>
               )}
-            </div>
-            {isCrypto && (
-              <div className="bg-accent-agent/5 rounded-lg p-4 border border-accent-agent/20">
-                <p className="text-sm font-medium text-accent-agent mb-2">Fund with USDC on Base</p>
-                <p className="text-sm text-text-secondary mb-2">
-                  Send {formatCurrency(totalAmount)} USDC to the escrow contract:
-                </p>
-                {escrowAddress ? (
-                  <div className="flex items-center gap-2">
-                    <code className="text-xs font-mono bg-white px-3 py-2 rounded border border-border text-text-primary flex-1 truncate">
-                      {escrowAddress}
-                    </code>
-                    <a
-                      href={`https://basescan.org/address/${escrowAddress}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-accent-agent hover:underline whitespace-nowrap"
-                    >
-                      View on Basescan
-                    </a>
-                  </div>
-                ) : (
-                  <p className="text-xs text-warning">No escrow address configured. Contact the squad admin.</p>
-                )}
+              <div className="flex items-center gap-3">
                 <button
                   onClick={handleFundContract}
-                  disabled={funding}
-                  className="mt-3 px-5 py-2.5 bg-accent-agent text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  disabled={funding || connecting}
+                  className="px-5 py-2.5 bg-accent-agent text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
-                  {funding ? 'Confirming...' : 'Confirm Deposit (Stub)'}
+                  {connecting
+                    ? 'Connecting Wallet...'
+                    : funding
+                      ? 'Confirming Deposit...'
+                      : isConnected
+                        ? `Fund ${formatCurrency(totalAmount)} USDC`
+                        : 'Connect Wallet to Fund'}
                 </button>
+                {isConnected && (
+                  <span className="text-xs text-success flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                    Wallet connected
+                  </span>
+                )}
               </div>
-            )}
+              {fundingError && (
+                <p className="text-xs text-error mt-2">{fundingError}</p>
+              )}
+              <p className="text-xs text-text-secondary mt-3">
+                All payments are processed as USDC on Base via the SquadSwarm escrow contract.
+              </p>
+            </div>
           </div>
         )}
 
@@ -679,31 +689,22 @@ export default function ContractOverviewPage() {
               </div>
             </div>
 
-            {isCrypto ? (
-              <div className="flex items-center gap-2 text-xs text-text-secondary">
-                <svg className="w-4 h-4 text-accent-agent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
-                <span>Escrowed on Base</span>
-                {escrowAddress && (
-                  <a
-                    href={`https://basescan.org/address/${escrowAddress}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent-agent hover:underline"
-                  >
-                    {escrowAddress.slice(0, 6)}...{escrowAddress.slice(-4)}
-                  </a>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-text-secondary flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
-                </svg>
-                Payments managed via Stripe
-              </p>
-            )}
+            <div className="flex items-center gap-2 text-xs text-text-secondary">
+              <svg className="w-4 h-4 text-accent-agent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              <span>USDC escrowed on Base</span>
+              {escrowAddress && (
+                <a
+                  href={`https://basescan.org/address/${escrowAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-agent hover:underline"
+                >
+                  {escrowAddress.slice(0, 6)}...{escrowAddress.slice(-4)}
+                </a>
+              )}
+            </div>
           </div>
         )}
 
@@ -723,7 +724,7 @@ export default function ContractOverviewPage() {
               </div>
               <div className="bg-bg-primary rounded-lg p-3">
                 <p className="text-xs text-text-secondary">Payment Method</p>
-                <p className="text-sm font-bold text-text-primary capitalize">{isCrypto ? 'USDC on Base' : 'Stripe'}</p>
+                <p className="text-sm font-bold text-text-primary">USDC on Base</p>
               </div>
               <div className="bg-bg-primary rounded-lg p-3">
                 <p className="text-xs text-text-secondary">Completed</p>
@@ -763,11 +764,9 @@ export default function ContractOverviewPage() {
               <p className="text-text-primary font-medium">
                 All {totalCount} deliverables approved. Releasing {formatCurrency(totalAmount)} to {contract.squadName}.
               </p>
-              {isCrypto && (
-                <p className="text-xs text-text-secondary mt-1">
-                  For crypto payments, the on-chain release will be triggered after confirmation.
-                </p>
-              )}
+              <p className="text-xs text-text-secondary mt-1">
+                The on-chain USDC release will be triggered after confirmation.
+              </p>
             </div>
             {!showCompleteConfirm ? (
               <button

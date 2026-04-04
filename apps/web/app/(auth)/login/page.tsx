@@ -41,14 +41,15 @@ export default function LoginPage() {
     if (walletLoading || connecting) return;
     setWalletLoading(true);
     try {
-      await connect();
+      const connectedAddress = await connect();
+      if (!connectedAddress) return;
       // After wallet connects, trigger SIWE
       const nonceRes = await fetch('/api/auth/siwe');
       const { nonce } = await nonceRes.json();
 
       const message = [
         `${window.location.host} wants you to sign in with your Ethereum account:`,
-        address,
+        connectedAddress,
         '',
         'Sign in to SquadSwarm.',
         '',
@@ -62,7 +63,7 @@ export default function LoginPage() {
       // Request signature from wallet
       const signature = await window.ethereum?.request({
         method: 'personal_sign',
-        params: [message, address],
+        params: [message, connectedAddress],
       });
 
       const res = await fetch('/api/auth/siwe', {

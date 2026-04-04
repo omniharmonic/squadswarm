@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { eq, and, count } from 'drizzle-orm';
-import { db, users, squadMembers, contracts } from '@squadswarm/db';
+import { db, users, squadMembers, contracts, activityLog } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 
 export async function GET() {
@@ -53,6 +53,39 @@ export async function GET() {
   // 4. Check if bio is set
   const hasBio = !!user.bio && user.bio.trim().length > 0;
 
+  // 5. Gather ratings for contracts involving user's squads
+  let positiveRatings = 0;
+  let negativeRatings = 0;
+
+  for (const squadId of squadIds) {
+    const squadContracts = await db
+      .select({ id: contracts.id })
+      .from(contracts)
+      .where(and(eq(contracts.squadId, squadId), eq(contracts.status, 'completed')));
+
+    for (const sc of squadContracts) {
+      const [ratingEntry] = await db
+        .select()
+        .from(activityLog)
+        .where(
+          and(
+            eq(activityLog.contractId, sc.id),
+            eq(activityLog.action, 'contract_rated')
+          )
+        )
+        .limit(1);
+
+      if (ratingEntry) {
+        const meta = ratingEntry.metadata as Record<string, unknown>;
+        const overall = Number(meta.overall);
+        if (overall >= 4) positiveRatings++;
+        else if (overall <= 2) negativeRatings++;
+      }
+    }
+  }
+
+  const ratingBonus = positiveRatings * 5 - negativeRatings * 5;
+
   // Calculate score
   const baseScore = 50;
   const bioBonus = hasBio ? 10 : 0;
@@ -60,8 +93,8 @@ export async function GET() {
   const squadContractBonus = completedAsSquadMember * 10;
   const clientContractBonus = completedAsClient * 5;
 
-  const rawScore = baseScore + bioBonus + squadBonus + squadContractBonus + clientContractBonus;
-  const trustScore = Math.min(rawScore, 100);
+  const rawScore = baseScore + bioBonus + squadBonus + squadContractBonus + clientContractBonus + ratingBonus;
+  const trustScore = Math.max(0, Math.min(rawScore, 100));
 
   // Update DB
   await db
@@ -77,12 +110,15 @@ export async function GET() {
       squads: squadBonus,
       squadContracts: squadContractBonus,
       clientContracts: clientContractBonus,
+      ratings: ratingBonus,
     },
     details: {
       hasBio,
       squadMemberships,
       completedAsSquadMember,
       completedAsClient,
+      positiveRatings,
+      negativeRatings,
     },
   });
 }

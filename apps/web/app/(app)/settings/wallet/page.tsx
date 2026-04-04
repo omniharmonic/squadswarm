@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useWeb3 } from '@/components/web3-provider';
+import { OnrampWidget } from '@/components/onramp-widget';
 
 interface User {
   walletAddress: string | null;
@@ -23,8 +24,13 @@ export default function WalletSettingsPage() {
 
   async function handleLinkWallet() {
     if (linking || connecting) return;
-    if (!isConnected || !address) {
-      try { await connect(); } catch { return; }
+    let walletAddress = address;
+    if (!isConnected || !walletAddress) {
+      try {
+        const connectedAddress = await connect();
+        if (!connectedAddress) return;
+        walletAddress = connectedAddress;
+      } catch { return; }
     }
     setLinking(true);
     try {
@@ -33,7 +39,7 @@ export default function WalletSettingsPage() {
 
       const message = [
         `${window.location.host} wants you to sign in with your Ethereum account:`,
-        address,
+        walletAddress,
         '',
         'Link wallet to SquadSwarm account.',
         '',
@@ -46,7 +52,7 @@ export default function WalletSettingsPage() {
 
       const signature = await window.ethereum?.request({
         method: 'personal_sign',
-        params: [message, address],
+        params: [message, walletAddress],
       });
 
       const res = await fetch('/api/auth/siwe', {
@@ -131,6 +137,15 @@ export default function WalletSettingsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Buy Crypto */}
+      <div className="bg-white rounded-2xl border border-border p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-2">Buy Crypto</h2>
+        <p className="text-sm text-text-secondary mb-4">
+          Purchase USDC to fund contracts and escrow payments on Base.
+        </p>
+        <OnrampWidget />
       </div>
 
       {/* Web3 Features */}
