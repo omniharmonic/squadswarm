@@ -23,7 +23,7 @@ export function UserMenu() {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-bg-secondary transition-colors"
       >
-        <div className="w-8 h-8 rounded-full bg-accent-agent/20 text-accent-agent flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 rounded-full bg-accent-agent/10 text-accent-agent flex items-center justify-center text-xs font-semibold">
           U
         </div>
         <svg

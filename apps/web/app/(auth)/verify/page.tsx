@@ -42,11 +42,11 @@ function VerifyContent() {
   }, [searchParams, router]);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-border p-8 text-center">
+    <div className="bg-white rounded-2xl shadow-sm border border-border p-8 text-center">
       {status === 'verifying' && (
         <>
-          <div className="w-8 h-8 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Verifying...</h2>
+          <div className="w-8 h-8 border-2 border-accent-agent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2 text-text-primary">Verifying...</h2>
           <p className="text-text-secondary text-sm">Signing you in to SquadSwarm.</p>
         </>
       )}
@@ -58,7 +58,7 @@ function VerifyContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold mb-2">You're in!</h2>
+          <h2 className="text-xl font-semibold mb-2 text-text-primary">You&apos;re in!</h2>
           <p className="text-text-secondary text-sm">Redirecting to your dashboard...</p>
         </>
       )}
@@ -70,9 +70,12 @@ function VerifyContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold mb-2">Verification failed</h2>
+          <h2 className="text-xl font-semibold mb-2 text-text-primary">Verification failed</h2>
           <p className="text-text-secondary text-sm mb-4">{errorMessage}</p>
-          <a href="/login" className="text-accent-squad hover:underline text-sm font-medium">
+          <a
+            href="/login"
+            className="text-accent-agent hover:text-accent-agent-hover text-sm font-medium transition-colors"
+          >
             Try signing in again
           </a>
         </>
@@ -85,9 +88,9 @@ export default function VerifyPage() {
   return (
     <Suspense
       fallback={
-        <div className="bg-white rounded-xl shadow-sm border border-border p-8 text-center">
-          <div className="w-8 h-8 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Loading...</h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-border p-8 text-center">
+          <div className="w-8 h-8 border-2 border-accent-agent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2 text-text-primary">Loading...</h2>
         </div>
       }
     >

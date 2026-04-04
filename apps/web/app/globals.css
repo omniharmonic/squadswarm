@@ -1,18 +1,51 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg-primary: #FAF8F5;
-  --color-bg-secondary: #F0EDE8;
-  --color-text-primary: #2C2825;
-  --color-text-secondary: #6B6560;
-  --color-accent-squad: #C4553A;
-  --color-accent-agent: #3A8C8C;
-  --color-accent-client: #D4A03C;
+  /* Background */
+  --color-bg-primary: #FAFAF8;
+  --color-bg-secondary: #F0EEEB;
+  --color-bg-elevated: #FFFFFF;
+
+  /* Text */
+  --color-text-primary: #1A1A1A;
+  --color-text-secondary: #64635F;
+  --color-text-muted: #9C9A95;
+
+  /* Brand — terracotta (from logo inner rings) */
+  --color-accent-squad: #bb6b44;
+  --color-accent-squad-hover: #a85d3a;
+  --color-accent-squad-light: #bb6b4415;
+
+  /* Brand — teal (from logo outer network) */
+  --color-accent-agent: #4e8c88;
+  --color-accent-agent-hover: #437a76;
+  --color-accent-agent-light: #4e8c8815;
+
+  /* Semantic — client/amber */
+  --color-accent-client: #C49A3C;
+
+  /* Status */
   --color-success: #3C7A4A;
   --color-warning: #CC7A2E;
   --color-error: #A63D2F;
   --color-escrow: #5A7A8C;
-  --color-border: #E0DCD7;
-  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Borders & surfaces */
+  --color-border: #E5E3DF;
+  --color-border-light: #F0EEEB;
+
+  /* Typography */
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better focus ring */
+*:focus-visible {
+  outline: 2px solid #4e8c88;
+  outline-offset: 2px;
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
@@ -67,11 +68,9 @@ export function Sidebar() {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-16 border-b border-border shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-accent-squad flex items-center justify-center text-white font-bold text-sm shrink-0">
-          S
-        </div>
+        <Image src="/logo-64.png" width={32} height={32} alt="SquadSwarm" className="shrink-0" />
         {!collapsed && (
-          <span className="font-bold text-text-primary text-lg whitespace-nowrap">
+          <span className="font-semibold text-text-primary text-lg whitespace-nowrap">
             SquadSwarm
           </span>
         )}
@@ -122,19 +121,25 @@ export function Sidebar() {
       {/* User section */}
       <div className="px-3 py-3 border-t border-border">
         <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-8 h-8 rounded-full bg-accent-agent/20 text-accent-agent flex items-center justify-center text-xs font-bold shrink-0">
+          <div className="w-8 h-8 rounded-full bg-accent-agent/10 text-accent-agent flex items-center justify-center text-xs font-semibold shrink-0">
             U
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-text-primary truncate">User</p>
-              <Link
-                href="/api/auth/signout"
-                className="text-xs text-text-secondary hover:text-accent-squad transition-colors"
-              >
-                Sign out
-              </Link>
+              <p className="text-[11px] text-text-secondary leading-tight">Member</p>
             </div>
+          )}
+          {!collapsed && (
+            <Link
+              href="/api/auth/signout"
+              className="text-xs text-text-secondary hover:text-accent-squad transition-colors shrink-0"
+              title="Sign out"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </Link>
           )}
         </div>
       </div>

@@ -121,7 +121,7 @@ export default function SubmitScopePage() {
   }
 
   const inputClass =
-    'w-full px-3.5 py-2.5 border border-border rounded-lg bg-bg-primary focus:outline-none focus:ring-2 focus:ring-accent-squad/50 focus:border-accent-squad text-sm placeholder:text-text-secondary/50';
+    'w-full px-3.5 py-2.5 border border-border rounded-lg bg-bg-primary focus:outline-none focus:ring-2 focus:ring-accent-agent/40 focus:border-accent-agent text-sm placeholder:text-text-secondary/50';
 
   const labelClass = 'block text-sm font-medium text-text-primary mb-1.5';
 

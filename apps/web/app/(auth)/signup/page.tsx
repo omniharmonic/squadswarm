@@ -34,13 +34,13 @@ export default function SignupPage() {
 
   if (status === 'sent') {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-border p-8 text-center">
-        <div className="w-12 h-12 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg className="w-6 h-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="bg-white rounded-2xl shadow-sm border border-border p-8 text-center">
+        <div className="w-12 h-12 bg-accent-agent/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6 text-accent-agent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold mb-2">Check your email</h2>
+        <h2 className="text-xl font-semibold mb-2 text-text-primary">Check your email</h2>
         <p className="text-text-secondary">
           We sent a sign-in link to <span className="font-medium text-text-primary">{email}</span>.
         </p>
@@ -49,15 +49,15 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-border p-8">
-      <h2 className="text-xl font-semibold mb-2">Create your account</h2>
+    <div className="bg-white rounded-2xl shadow-sm border border-border p-8">
+      <h2 className="text-xl font-semibold mb-2 text-text-primary">Create your account</h2>
       <p className="text-text-secondary text-sm mb-6">
         Join SquadSwarm to form squads and bid on scopes.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="displayName" className="block text-sm font-medium mb-1.5">
+          <label htmlFor="displayName" className="block text-sm font-medium mb-1.5 text-text-primary">
             Display name
           </label>
           <input
@@ -67,15 +67,15 @@ export default function SignupPage() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Your name"
-            className="w-full px-3.5 py-2.5 border border-border rounded-lg bg-bg-primary
-                       focus:outline-none focus:ring-2 focus:ring-accent-squad/50 focus:border-accent-squad
-                       text-sm placeholder:text-text-secondary/50"
+            className="w-full px-3.5 py-2.5 border border-border rounded-xl bg-bg-primary
+                       focus:outline-none focus:ring-2 focus:ring-accent-agent/40 focus:border-accent-agent
+                       text-sm placeholder:text-text-secondary/50 transition-colors"
             disabled={status === 'loading'}
           />
         </div>
 
         <div>
-          <label htmlFor="email" className="block text-sm font-medium mb-1.5">
+          <label htmlFor="email" className="block text-sm font-medium mb-1.5 text-text-primary">
             Email address
           </label>
           <input
@@ -85,9 +85,9 @@ export default function SignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full px-3.5 py-2.5 border border-border rounded-lg bg-bg-primary
-                       focus:outline-none focus:ring-2 focus:ring-accent-squad/50 focus:border-accent-squad
-                       text-sm placeholder:text-text-secondary/50"
+            className="w-full px-3.5 py-2.5 border border-border rounded-xl bg-bg-primary
+                       focus:outline-none focus:ring-2 focus:ring-accent-agent/40 focus:border-accent-agent
+                       text-sm placeholder:text-text-secondary/50 transition-colors"
             disabled={status === 'loading'}
           />
         </div>
@@ -99,8 +99,8 @@ export default function SignupPage() {
         <button
           type="submit"
           disabled={status === 'loading'}
-          className="w-full py-2.5 px-4 bg-accent-squad text-white rounded-lg font-medium text-sm
-                     hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-2.5 px-4 bg-accent-squad text-white rounded-xl font-medium text-sm
+                     hover:bg-accent-squad-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {status === 'loading' ? 'Creating account...' : 'Create Account'}
         </button>
@@ -108,7 +108,7 @@ export default function SignupPage() {
 
       <p className="mt-6 text-center text-sm text-text-secondary">
         Already have an account?{' '}
-        <a href="/login" className="text-accent-squad hover:underline font-medium">
+        <a href="/login" className="text-accent-agent hover:text-accent-agent-hover font-medium transition-colors">
           Sign in
         </a>
       </p>

@@ -9,7 +9,7 @@ export default function Image() {
   return new ImageResponse(
     (
       <div style={{
-        background: '#FAF8F5',
+        background: '#FAFAF8',
         width: '100%',
         height: '100%',
         display: 'flex',
@@ -21,21 +21,21 @@ export default function Image() {
         <div style={{
           fontSize: 72,
           fontWeight: 700,
-          color: '#2C2825',
+          color: '#1A1A1A',
           marginBottom: 16,
         }}>
           SquadSwarm
         </div>
         <div style={{
           fontSize: 32,
-          color: '#C4553A',
+          color: '#bb6b44',
           fontWeight: 500,
         }}>
           Squads bid. Swarms deliver.
         </div>
         <div style={{
           fontSize: 20,
-          color: '#6B6560',
+          color: '#64635F',
           marginTop: 24,
         }}>
           Cooperative work brokerage with AI-native project management

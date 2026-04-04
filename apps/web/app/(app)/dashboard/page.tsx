@@ -128,10 +128,46 @@ export default function DashboardPage() {
   const isLoading = loadingSquads || loadingProposals || loadingContracts;
 
   const quickStats = [
-    { label: 'Active Squads', value: isLoading ? '-' : String(squads.length || 0), icon: '\uD83D\uDC65' },
-    { label: 'Open Scopes', value: openScopeCount === null ? '-' : String(openScopeCount), icon: '\uD83D\uDCCB' },
-    { label: 'Your Proposals', value: isLoading ? '-' : String(proposals.length || 0), icon: '\uD83D\uDCDD' },
-    { label: 'Trust Score', value: '85', icon: '\u2B50' },
+    {
+      label: 'Active Squads',
+      value: isLoading ? '-' : String(squads.length || 0),
+      color: 'bg-accent-agent/10 text-accent-agent',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Open Scopes',
+      value: openScopeCount === null ? '-' : String(openScopeCount),
+      color: 'bg-accent-squad/10 text-accent-squad',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Your Proposals',
+      value: isLoading ? '-' : String(proposals.length || 0),
+      color: 'bg-accent-client/10 text-accent-client',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Trust Score',
+      value: '85',
+      color: 'bg-success/10 text-success',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      ),
+    },
   ];
 
   return (
@@ -146,10 +182,12 @@ export default function DashboardPage() {
         {quickStats.map((stat) => (
           <div
             key={stat.label}
-            className="bg-white rounded-xl border border-border p-4 text-center"
+            className="bg-white rounded-xl border border-border p-5"
           >
-            <div className="text-2xl mb-1">{stat.icon}</div>
-            <div className="text-2xl font-bold">{stat.value}</div>
+            <div className={`w-10 h-10 rounded-lg ${stat.color} flex items-center justify-center mb-3`}>
+              {stat.icon}
+            </div>
+            <div className="text-2xl font-bold text-text-primary">{stat.value}</div>
             <div className="text-xs text-text-secondary mt-0.5">{stat.label}</div>
           </div>
         ))}
