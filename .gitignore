@@ -41,3 +41,4 @@ pnpm-debug.log*
 
 # test
 coverage
+contracts/lib/

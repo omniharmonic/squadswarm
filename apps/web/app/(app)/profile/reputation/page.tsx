@@ -1,6 +1,26 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AttestationBadge } from '@/components/attestation-badge';
+
+// Mock attestation data — replace with real API calls once EAS integration is live
+const MOCK_ATTESTATIONS = [
+  {
+    uid: '0xabc123def456789012345678901234567890123456789012345678901234abcd',
+    schemaName: 'Contract Completion',
+    timestamp: Math.floor(Date.now() / 1000) - 86400 * 30,
+  },
+  {
+    uid: '0xdef456789012345678901234567890123456789012345678901234567890abcd',
+    schemaName: 'Client Satisfaction',
+    timestamp: Math.floor(Date.now() / 1000) - 86400 * 14,
+  },
+  {
+    uid: '0x789012345678901234567890123456789012345678901234567890123456abcd',
+    schemaName: 'Skill Verification',
+    timestamp: Math.floor(Date.now() / 1000) - 86400 * 7,
+  },
+];
 
 interface TrustScoreData {
   trustScore: number;
@@ -22,6 +42,14 @@ interface TrustScoreData {
 export default function TrustReputationPage() {
   const [data, setData] = useState<TrustScoreData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [web3Enabled, setWeb3Enabled] = useState(false);
+
+  // Check if wallet is connected (web3 enabled)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).ethereum) {
+      setWeb3Enabled(true);
+    }
+  }, []);
 
   useEffect(() => {
     fetch('/api/users/me/trust-score')
@@ -180,6 +208,54 @@ export default function TrustReputationPage() {
           </div>
         </div>
       )}
+
+      {/* On-Chain Attestations */}
+      <div className="bg-white rounded-xl border border-border p-6 mt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <svg className="w-5 h-5 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+          <h2 className="font-semibold text-text-primary">On-Chain Attestations</h2>
+        </div>
+
+        {web3Enabled ? (
+          <div className="space-y-3">
+            <p className="text-sm text-text-secondary mb-4">
+              Your verified on-chain attestations via Ethereum Attestation Service (EAS) on Base.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {MOCK_ATTESTATIONS.map((att) => (
+                <AttestationBadge
+                  key={att.uid}
+                  uid={att.uid}
+                  schemaName={att.schemaName}
+                  timestamp={att.timestamp}
+                  size="md"
+                />
+              ))}
+            </div>
+            <p className="text-xs text-text-secondary mt-3">
+              Attestations are created automatically when contracts are completed and verified on-chain.
+            </p>
+          </div>
+        ) : (
+          <div className="text-center py-6">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-accent-agent/10 flex items-center justify-center">
+              <svg className="w-6 h-6 text-accent-agent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="6" width="20" height="12" rx="2" />
+                <path d="M22 10H2" />
+                <path d="M7 15h4" />
+              </svg>
+            </div>
+            <h3 className="font-medium text-text-primary mb-1">Connect Wallet to Earn Attestations</h3>
+            <p className="text-sm text-text-secondary max-w-sm mx-auto">
+              Link your wallet to receive on-chain attestations for completed contracts,
+              verified skills, and client satisfaction ratings via EAS on Base.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

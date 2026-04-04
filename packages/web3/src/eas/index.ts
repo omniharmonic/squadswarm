@@ -1,5 +1,3 @@
-export { config } from './wagmi';
-export { createSquadSafe } from './safe';
 export {
   EAS_CONTRACT_ADDRESS,
   SCHEMA_REGISTRY_ADDRESS,
@@ -10,11 +8,14 @@ export {
   SKILL_VERIFICATION_SCHEMA,
   DISPUTE_RESOLUTION_SCHEMA,
   ALL_SCHEMAS,
+} from './schemas';
+
+export {
   createAttestation,
   createContractCompletionAttestation,
   createClientSatisfactionAttestation,
   createAgentCapabilityAttestation,
   createSkillVerificationAttestation,
-} from './eas';
-export type { AttestationData, AttestationResult } from './eas';
-export * from './escrow';
+} from './create-attestation';
+
+export type { AttestationData, AttestationResult } from './create-attestation';

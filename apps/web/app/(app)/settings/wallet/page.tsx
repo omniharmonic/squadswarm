@@ -1,89 +1,153 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { useWeb3 } from '@/components/web3-provider';
+
+interface User {
+  walletAddress: string | null;
+  web3Enabled: boolean;
+}
+
 export default function WalletSettingsPage() {
+  const { connect, address, isConnected, disconnect } = useWeb3();
+  const [user, setUser] = useState<User | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/users/me')
+      .then((r) => r.json())
+      .then((d) => { if (!d.error) setUser(d); })
+      .catch(() => {});
+  }, []);
+
+  async function handleLinkWallet() {
+    if (!isConnected || !address) {
+      try { await connect(); } catch { return; }
+    }
+    setLinking(true);
+    try {
+      const nonceRes = await fetch('/api/auth/siwe');
+      const { nonce } = await nonceRes.json();
+
+      const message = [
+        `${window.location.host} wants you to sign in with your Ethereum account:`,
+        address,
+        '',
+        'Link wallet to SquadSwarm account.',
+        '',
+        `URI: ${window.location.origin}`,
+        `Version: 1`,
+        `Chain ID: 8453`,
+        `Nonce: ${nonce}`,
+        `Issued At: ${new Date().toISOString()}`,
+      ].join('\n');
+
+      const signature = await window.ethereum?.request({
+        method: 'personal_sign',
+        params: [message, address],
+      });
+
+      const res = await fetch('/api/auth/siwe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, signature }),
+      });
+
+      if (res.ok) {
+        toast.success('Wallet linked!');
+        setUser((prev) => prev ? { ...prev, walletAddress: address!, web3Enabled: true } : prev);
+      } else {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed';
+      if (!msg.includes('User rejected')) toast.error(msg);
+    } finally {
+      setLinking(false);
+    }
+  }
+
   return (
     <div className="max-w-2xl">
-      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-text-primary">Wallet Settings</h1>
-        <p className="text-text-secondary text-sm mt-1">Connect and manage your wallet for payments and payouts.</p>
+        <h1 className="text-2xl font-bold">Wallet & Web3</h1>
+        <p className="text-text-secondary mt-1">Connect your wallet to enable crypto payments and on-chain reputation.</p>
       </div>
 
       {/* Connection Status */}
-      <section className="bg-white rounded-xl border border-border p-6 mb-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Web3 Status</h2>
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-bg-secondary text-text-secondary">
-            Not Connected
-          </span>
-        </div>
+      <div className="bg-white rounded-2xl border border-border p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Wallet Connection</h2>
 
-        <p className="text-sm text-text-secondary leading-relaxed mb-5">
-          Connect your wallet to enable crypto payments, smart contract escrow, and on-chain reputation attestations.
-        </p>
-
-        <button className="px-5 py-2.5 bg-accent-squad text-white rounded-xl text-sm font-medium hover:bg-accent-squad/90 transition-colors">
-          Connect Wallet
-        </button>
-      </section>
+        {user?.walletAddress ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full bg-success" />
+              <span className="text-sm font-medium">Wallet Linked</span>
+            </div>
+            <div className="p-3 bg-bg-primary rounded-lg border border-border font-mono text-sm break-all">
+              {user.walletAddress}
+            </div>
+            <p className="text-xs text-text-secondary">Your wallet is linked to your account. You can use crypto payments and earn on-chain attestations.</p>
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-sm text-text-secondary mb-4">
+              {isConnected ? `Connected: ${address?.slice(0, 6)}...${address?.slice(-4)}` : 'No wallet connected'}
+            </p>
+            <button onClick={isConnected ? handleLinkWallet : async () => { try { await connect(); } catch {} }}
+              disabled={linking}
+              className="px-6 py-2.5 bg-accent-agent text-white rounded-xl text-sm font-medium hover:bg-accent-agent-hover transition-colors disabled:opacity-50">
+              {linking ? 'Linking...' : isConnected ? 'Link Wallet to Account' : 'Connect Wallet'}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Supported Networks */}
-      <section className="bg-white rounded-xl border border-border p-6 mb-4">
-        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">
-          Supported Networks
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Base */}
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-bg-primary">
-            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
-              <span className="text-white font-bold text-sm">B</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-text-primary">Base</p>
-              <p className="text-xs text-text-secondary">Ethereum L2 by Coinbase</p>
-            </div>
-          </div>
-
-          {/* Celo */}
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-bg-primary">
-            <div className="w-10 h-10 rounded-full bg-emerald-400 flex items-center justify-center shrink-0">
-              <span className="text-white font-bold text-sm">C</span>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-text-primary">Celo</p>
-              <p className="text-xs text-text-secondary">Mobile-first EVM chain</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Upcoming Features */}
-      <section className="bg-white rounded-xl border border-border p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">
-            Upcoming Features
-          </h2>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-agent/10 text-accent-agent">
-            Coming in Phase 7
-          </span>
-        </div>
-        <ul className="space-y-3">
+      <div className="bg-white rounded-2xl border border-border p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Supported Networks</h2>
+        <div className="grid grid-cols-2 gap-3">
           {[
-            { title: 'Smart Contract Escrow', description: 'Automated milestone-based payment releases through on-chain escrow contracts.' },
-            { title: 'On-Chain Reputation', description: 'Soulbound attestations for completed contracts, verified skills, and trust scores.' },
-            { title: 'Multi-Sig Treasury', description: 'Squad treasuries managed by multi-signature wallets with governance-based approvals.' },
-            { title: 'Token-Gated Access', description: 'Require specific tokens or NFTs for squad membership or client access.' },
-          ].map((feature) => (
-            <li key={feature.title} className="flex items-start gap-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent-agent mt-2 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-text-primary">{feature.title}</p>
-                <p className="text-xs text-text-secondary mt-0.5">{feature.description}</p>
+            { name: 'Base', desc: 'Primary network for escrow contracts', color: 'bg-blue-500' },
+            { name: 'Base Sepolia', desc: 'Testnet for development', color: 'bg-blue-300' },
+            { name: 'Celo', desc: 'Mobile-first, carbon-negative', color: 'bg-yellow-500' },
+            { name: 'Celo Alfajores', desc: 'Celo testnet', color: 'bg-yellow-300' },
+          ].map((n) => (
+            <div key={n.name} className="p-3 bg-bg-primary rounded-lg border border-border">
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-3 h-3 rounded-full ${n.color}`} />
+                <span className="text-sm font-medium">{n.name}</span>
               </div>
-            </li>
+              <p className="text-xs text-text-secondary">{n.desc}</p>
+            </div>
           ))}
-        </ul>
-      </section>
+        </div>
+      </div>
+
+      {/* Web3 Features */}
+      <div className="bg-white rounded-2xl border border-border p-6">
+        <h2 className="text-lg font-semibold mb-4">Web3 Features</h2>
+        <div className="space-y-3">
+          {[
+            { name: 'Smart Contract Escrow', desc: 'USDC-based escrow with milestone releases', ready: true },
+            { name: 'EAS Attestations', desc: 'On-chain reputation and skill verification', ready: true },
+            { name: 'Squad Multisig', desc: 'Gnosis Safe wallet for squad treasury', ready: false },
+            { name: 'Token-Gated Access', desc: 'Exclusive scopes for token holders', ready: false },
+          ].map((f) => (
+            <div key={f.name} className="flex items-center justify-between p-3 rounded-lg border border-border">
+              <div>
+                <span className="text-sm font-medium">{f.name}</span>
+                <p className="text-xs text-text-secondary">{f.desc}</p>
+              </div>
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${f.ready ? 'bg-success/10 text-success' : 'bg-accent-agent/10 text-accent-agent'}`}>
+                {f.ready ? 'Available' : 'Coming soon'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
