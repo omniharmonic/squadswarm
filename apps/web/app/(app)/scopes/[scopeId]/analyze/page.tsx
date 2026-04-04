@@ -296,8 +296,14 @@ export default function AIAnalysisPage() {
             } else if (data.type === 'done') {
               const content = data.text || accumulated;
               setMessages((prev) => [...prev, { role: 'analyst', content }]);
-              if (data.status === 'ready' || hasWorkPlan(content)) setStatus('ready');
-              else setStatus('questions');
+              const isReady = data.status === 'ready' || hasWorkPlan(content);
+              if (isReady) {
+                setStatus('ready');
+                // Force backend status update in case server-side extraction failed
+                fetch(`/api/scope-proposals/${scopeId}/set-ready`, { method: 'POST' }).catch(() => {});
+              } else {
+                setStatus('questions');
+              }
             } else if (data.type === 'error') {
               setMessages((prev) => [...prev, { role: 'analyst', content: `Error: ${data.message}` }]);
               setStatus('idle');
@@ -333,6 +339,9 @@ export default function AIAnalysisPage() {
   async function handlePublish() {
     setPublishing(true);
     try {
+      // Ensure status is ready before publishing
+      await fetch(`/api/scope-proposals/${scopeId}/set-ready`, { method: 'POST' });
+
       const res = await fetch(`/api/scope-proposals/${scopeId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

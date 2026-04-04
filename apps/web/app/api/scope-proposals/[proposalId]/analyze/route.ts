@@ -38,6 +38,39 @@ When generating a work plan (only when the scope is sufficiently detailed OR whe
 - Role taxonomy: ${ROLE_TAXONOMY.join(', ')}
 - Format taxonomy: ${FORMAT_TAXONOMY.join(', ')}`;
 
+/** Extract all JSON objects from text, handling ```json fences and bare JSON */
+function extractJson(text: string): Record<string, unknown> | null {
+  // Try ```json fences first (greedy to get the largest block)
+  const fenceMatches = [...text.matchAll(/```json\s*([\s\S]*?)```/g)];
+  for (const match of fenceMatches.reverse()) {
+    // Try last fence first (most likely to be the final answer)
+    try {
+      const parsed = JSON.parse(match[1]!.trim());
+      if (parsed.type === 'work_plan' || parsed.type === 'sufficiency_assessment') return parsed;
+    } catch { /* try next */ }
+  }
+
+  // Try bare JSON (brace matching for the LAST top-level object)
+  let depth = 0;
+  let lastStart = -1;
+  let lastEnd = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') { if (depth === 0) lastStart = i; depth++; }
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0 && lastStart >= 0) { lastEnd = i; }
+    }
+  }
+  if (lastStart >= 0 && lastEnd > lastStart) {
+    try {
+      const parsed = JSON.parse(text.slice(lastStart, lastEnd + 1));
+      if (parsed.type === 'work_plan' || parsed.type === 'sufficiency_assessment') return parsed;
+    } catch { /* skip */ }
+  }
+
+  return null;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ proposalId: string }> },
@@ -65,7 +98,6 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
 
-  // Build the initial scope context
   const scopeContext = `Please analyze this scope proposal:
 
 **${proposal.title}**
@@ -77,17 +109,11 @@ ${documents.length > 0 ? '**Attached Documents:**\n' + documents.map((d) => `- $
 **Budget:** ${proposal.budgetMin && proposal.budgetMax ? `$${proposal.budgetMin} - $${proposal.budgetMax}` : 'Not specified'}
 **Timeline:** ${proposal.timelineDays ? `${proposal.timelineDays} days` : 'Not specified'}`;
 
-  // Build Anthropic messages
   let messages: Anthropic.MessageParam[];
-
   if (body.messages?.length) {
-    // Continuing a conversation — map roles correctly
-    messages = [
-      { role: 'user' as const, content: scopeContext },
-    ];
+    messages = [{ role: 'user' as const, content: scopeContext }];
     for (const m of body.messages as { role: string; content: string }[]) {
       const role = m.role === 'analyst' ? 'assistant' : 'user';
-      // Anthropic requires alternating roles — merge consecutive same-role messages
       const last = messages[messages.length - 1];
       if (last && last.role === role) {
         last.content = last.content + '\n\n' + m.content;
@@ -99,7 +125,7 @@ ${documents.length > 0 ? '**Attached Documents:**\n' + documents.map((d) => `- $
     messages = [{ role: 'user' as const, content: scopeContext }];
   }
 
-  // Update status to analyzing
+  // Set to analyzing
   await db
     .update(scopeProposals)
     .set({ status: 'analyzing', updatedAt: new Date() })
@@ -127,44 +153,51 @@ ${documents.length > 0 ? '**Attached Documents:**\n' + documents.map((d) => `- $
         stream.on('error', (error) => {
           console.error('Stream error:', error);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: String(error) })}\n\n`));
+          // Reset status on error
+          db.update(scopeProposals)
+            .set({ status: 'needs_info', updatedAt: new Date() })
+            .where(eq(scopeProposals.id, proposalId))
+            .catch(console.error);
           controller.close();
         });
 
-        stream.on('end', async () => {
-          // Extract JSON from the response (may be wrapped in ```json fences)
-          let jsonResult: Record<string, unknown> | null = null;
-          const jsonMatch = fullText.match(/```json\s*([\s\S]*?)```/);
-          if (jsonMatch?.[1]) {
-            try { jsonResult = JSON.parse(jsonMatch[1].trim()); } catch { /* skip */ }
-          }
-          // Also try parsing the whole thing as JSON (in case AI didn't use fences)
-          if (!jsonResult) {
-            try { jsonResult = JSON.parse(fullText.trim()); } catch { /* skip */ }
-          }
-
+        stream.on('end', () => {
+          // Extract JSON result
+          const jsonResult = extractJson(fullText);
           const resultType = jsonResult?.type as string | undefined;
           const isWorkPlan = resultType === 'work_plan';
-          const isReadyAssessment = resultType === 'sufficiency_assessment' && (jsonResult as Record<string, unknown>)?.isReady === true;
+          const isReadyAssessment = resultType === 'sufficiency_assessment' && jsonResult?.isReady === true;
           const isReady = isWorkPlan || isReadyAssessment;
+          const newStatus = isReady ? 'ready' : 'needs_info';
 
+          console.log(`[Analyze] proposalId=${proposalId} resultType=${resultType} isReady=${isReady} newStatus=${newStatus} jsonFound=${!!jsonResult} textLength=${fullText.length}`);
+
+          // Send done event
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: 'done',
             text: fullText,
             resultType,
-            status: isReady ? 'ready' : 'needs_info',
+            status: newStatus,
           })}\n\n`));
           controller.close();
 
-          // Store result
-          const newStatus = isReady ? 'ready' : 'needs_info';
-          await db
-            .update(scopeProposals)
+          // Store result — fire and forget with logging
+          db.update(scopeProposals)
             .set({
               aiAnalysis: jsonResult || { raw: fullText },
               status: newStatus,
               updatedAt: new Date(),
             })
-            .where(eq(scopeProposals.id, proposalId));
+            .where(eq(scopeProposals.id, proposalId))
+            .then(() => console.log(`[Analyze] DB updated: ${proposalId} → ${newStatus}`))
+            .catch((err) => {
+              console.error(`[Analyze] DB update failed for ${proposalId}:`, err);
+              // Try to at least reset from analyzing
+              db.update(scopeProposals)
+                .set({ status: 'needs_info', updatedAt: new Date() })
+                .where(eq(scopeProposals.id, proposalId))
+                .catch(console.error);
+            });
         });
       } catch (error) {
         console.error('Analysis init error:', error);
@@ -173,6 +206,11 @@ ${documents.length > 0 ? '**Attached Documents:**\n' + documents.map((d) => `- $
           message: error instanceof Error ? error.message : 'Analysis failed',
         })}\n\n`));
         controller.close();
+        // Reset status
+        db.update(scopeProposals)
+          .set({ status: 'needs_info', updatedAt: new Date() })
+          .where(eq(scopeProposals.id, proposalId))
+          .catch(console.error);
       }
     },
   });
