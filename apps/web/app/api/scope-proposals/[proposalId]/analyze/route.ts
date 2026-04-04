@@ -32,9 +32,9 @@ When generating a work plan (only when the scope is sufficiently detailed OR whe
 
 ## Rules
 - On first analysis: assess sufficiency. If ALL dimensions >= 60, generate a work plan directly. If not, output the assessment and explain what's missing conversationally.
-- NEVER output both an assessment AND a work plan in the same response.
+- NEVER output both an assessment AND a work plan in the same response. Pick ONE.
 - When the user asks questions or provides information, respond conversationally. Only output JSON when doing a formal assessment or generating a work plan.
-- When asked to "auto-improve" or "fill gaps": use your best judgment to strengthen the scope, then generate a work plan.
+- CRITICAL: When asked to "auto-improve", "fill gaps", or "generate a work plan" — you MUST respond with a work_plan JSON block. Make reasonable assumptions for any missing details. Do NOT output another sufficiency_assessment. The user is asking you to move forward.
 - Role taxonomy: ${ROLE_TAXONOMY.join(', ')}
 - Format taxonomy: ${FORMAT_TAXONOMY.join(', ')}`;
 

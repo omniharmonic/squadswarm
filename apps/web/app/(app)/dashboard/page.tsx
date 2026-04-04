@@ -81,33 +81,45 @@ function proposalLinkLabel(status: string): string {
   }
 }
 
+interface Contract {
+  id: string;
+  title: string;
+  status: string;
+  squadName: string;
+  clientName: string;
+  totalAmount: string;
+  createdAt: string;
+}
+
 export default function DashboardPage() {
   const [squads, setSquads] = useState<Squad[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
   const [loadingSquads, setLoadingSquads] = useState(true);
   const [loadingProposals, setLoadingProposals] = useState(true);
+  const [loadingContracts, setLoadingContracts] = useState(true);
 
   useEffect(() => {
     fetch('/api/squads')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed');
-        return res.json();
-      })
+      .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
       .then((data: Squad[]) => setSquads(data))
       .catch(() => {})
       .finally(() => setLoadingSquads(false));
 
     fetch('/api/scope-proposals')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed');
-        return res.json();
-      })
+      .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
       .then((data: Proposal[]) => setProposals(data))
       .catch(() => {})
       .finally(() => setLoadingProposals(false));
+
+    fetch('/api/contracts')
+      .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
+      .then((data: Contract[]) => setActiveContracts(data.filter((c) => c.status === 'active' || c.status === 'pending_deposit')))
+      .catch(() => {})
+      .finally(() => setLoadingContracts(false));
   }, []);
 
-  const isLoading = loadingSquads || loadingProposals;
+  const isLoading = loadingSquads || loadingProposals || loadingContracts;
 
   const quickStats = [
     { label: 'Active Squads', value: isLoading ? '-' : String(squads.length || 0), icon: '\uD83D\uDC65' },
@@ -226,43 +238,40 @@ export default function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Active Contract */}
+        {/* Active Contracts */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Active Contract</h2>
-            <Link href="/contracts/mock-contract-1" className="text-sm text-accent-squad hover:underline">
-              View all
-            </Link>
-          </div>
-          <Link
-            href="/contracts/mock-contract-1/board"
-            className="block p-4 bg-bg-primary rounded-lg border border-border hover:shadow-sm transition-shadow"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold">Regenerative Finance Dashboard</h3>
-              <span className="text-xs px-2 py-1 bg-success/10 text-success rounded-full font-medium">
-                Active
-              </span>
+          <h2 className="text-lg font-semibold mb-4">Active Contracts</h2>
+          {loadingContracts ? (
+            <div className="text-center py-6">
+              <div className="w-6 h-6 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto" />
             </div>
-            <p className="text-sm text-text-secondary mb-3">
-              Building a data visualization dashboard for ReFi impact metrics.
-            </p>
-            <div className="flex items-center gap-4 text-xs text-text-secondary">
-              <span>Client: Climate DAO</span>
-              <span>Squad: Regen Builders</span>
-              <span>$12,000</span>
+          ) : activeContracts.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-sm text-text-secondary mb-3">No active contracts. Browse scopes to find work.</p>
+              <Link href="/scopes" className="inline-block py-2 px-4 bg-accent-client text-white rounded-lg text-sm font-medium hover:opacity-90">
+                Browse Scopes
+              </Link>
             </div>
-            {/* Progress bar */}
-            <div className="mt-3">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-text-secondary">Deliverables</span>
-                <span className="font-medium">2 of 8 approved</span>
-              </div>
-              <div className="h-2 bg-bg-secondary rounded-full overflow-hidden">
-                <div className="h-full bg-success rounded-full" style={{ width: '25%' }} />
-              </div>
+          ) : (
+            <div className="space-y-3">
+              {activeContracts.map((c) => (
+                <Link key={c.id} href={`/contracts/${c.id}/board`}
+                  className="block p-4 bg-bg-primary rounded-lg border border-border hover:shadow-sm transition-shadow">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-sm">{c.title}</h3>
+                    <span className="text-xs px-2 py-1 bg-success/10 text-success rounded-full font-medium capitalize">
+                      {c.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-text-secondary">
+                    <span>Client: {c.clientName}</span>
+                    <span>Squad: {c.squadName}</span>
+                    {c.totalAmount && <span>${Number(c.totalAmount).toLocaleString()}</span>}
+                  </div>
+                </Link>
+              ))}
             </div>
-          </Link>
+          )}
         </div>
 
         {/* Recent Activity */}
