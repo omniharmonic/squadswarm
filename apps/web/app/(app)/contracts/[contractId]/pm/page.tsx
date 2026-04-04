@@ -214,12 +214,99 @@ export default function PMDashboardPage() {
             </div>
           )}
 
-          {/* Recent Activity — empty state since we don't have an activity API yet */}
-          <div className="bg-white rounded-xl border border-border p-6">
-            <h2 className="text-lg font-semibold text-text-primary mb-4">Recent Activity</h2>
-            <p className="text-text-secondary text-sm text-center py-4">No activity yet.</p>
-          </div>
+          {/* Recent Activity */}
+          <ActivityFeed contractId={contractId} />
         </>
+      )}
+    </div>
+  );
+}
+
+interface ActivityEntry {
+  id: string;
+  action: string;
+  actorName: string;
+  actorIsAgent: boolean;
+  entityType?: string;
+  createdAt: string;
+}
+
+function formatActionDescription(entry: ActivityEntry): string {
+  const action = entry.action.replace(/_/g, ' ');
+  const entity = entry.entityType ? ` ${entry.entityType.replace(/_/g, ' ')}` : '';
+  return `${action}${entity}`;
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function ActivityFeed({ contractId }: { contractId: string }) {
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/contracts/${contractId}/activity`)
+      .then((res) => {
+        if (res.ok) return res.json();
+        return [];
+      })
+      .then((data: ActivityEntry[]) => {
+        setActivity(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        setActivity([]);
+      })
+      .finally(() => setLoadingActivity(false));
+  }, [contractId]);
+
+  return (
+    <div className="bg-white rounded-xl border border-border p-6">
+      <h2 className="text-lg font-semibold text-text-primary mb-4">Recent Activity</h2>
+      {loadingActivity ? (
+        <div className="space-y-3 py-2">
+          <div className="h-4 w-3/4 bg-bg-secondary rounded animate-pulse" />
+          <div className="h-4 w-1/2 bg-bg-secondary rounded animate-pulse" />
+        </div>
+      ) : activity.length === 0 ? (
+        <p className="text-text-secondary text-sm text-center py-4">No activity yet.</p>
+      ) : (
+        <div className="space-y-3 max-h-80 overflow-y-auto">
+          {activity.slice(0, 20).map((entry) => (
+            <div key={entry.id} className="flex items-start gap-3">
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                  entry.actorIsAgent
+                    ? 'bg-accent-agent/10 text-accent-agent'
+                    : 'bg-bg-secondary text-text-secondary'
+                }`}
+              >
+                {entry.actorName
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-text-primary">
+                  <span className="font-semibold">{entry.actorName}</span>{' '}
+                  {formatActionDescription(entry)}
+                </p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {formatRelativeTime(entry.createdAt)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

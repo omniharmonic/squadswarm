@@ -173,16 +173,25 @@ export default function KanbanBoardPage() {
       if (res.ok) {
         const data = await res.json();
         const assigneeName = data.assignee || currentUser.displayName || currentUser.email;
+
+        // Also move to in_progress after claiming
+        const statusRes = await fetch(`/api/deliverables/${deliverableId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'in_progress' }),
+        });
+        const newStatus = statusRes.ok ? 'in_progress' : undefined;
+
         setAllDeliverables((prev) =>
           prev.map((d) =>
             d.id === deliverableId
-              ? { ...d, assignee: assigneeName, assignedMemberId: currentUser.id }
+              ? { ...d, assignee: assigneeName, assignedMemberId: currentUser.id, ...(newStatus ? { status: newStatus } : {}) }
               : d
           )
         );
         if (selectedDeliverable?.id === deliverableId) {
           setSelectedDeliverable((prev) =>
-            prev ? { ...prev, assignee: assigneeName, assignedMemberId: currentUser.id } : null
+            prev ? { ...prev, assignee: assigneeName, assignedMemberId: currentUser.id, ...(newStatus ? { status: newStatus } : {}) } : null
           );
         }
       }

@@ -3,8 +3,18 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export function UserMenu() {
   const [open, setOpen] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -17,6 +27,22 @@ export function UserMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then((data) => {
+        if (data?.user) {
+          setDisplayName(data.user.displayName || data.user.email || null);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const initials = displayName ? getInitials(displayName) : 'U';
+
   return (
     <div className="relative" ref={menuRef}>
       <button
@@ -24,7 +50,7 @@ export function UserMenu() {
         className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-bg-secondary transition-colors"
       >
         <div className="w-8 h-8 rounded-full bg-accent-agent/10 text-accent-agent flex items-center justify-center text-xs font-semibold">
-          U
+          {initials}
         </div>
         <svg
           className={`w-4 h-4 text-text-secondary transition-transform ${open ? 'rotate-180' : ''}`}
