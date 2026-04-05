@@ -89,6 +89,11 @@ export async function computePageRankScore(entityId: string): Promise<{
 /**
  * Blend PageRank score with simple additive score.
  * Returns the final blended score.
+ *
+ * Note: Skill attestations (skill_verification type) are included in the additive
+ * score via attestation-scoring.ts, which gives +10 (on-chain) or +5 (off-chain)
+ * per skill_verification attestation. This means skill attestations contribute to
+ * the trust score proportionally to the number of skills a user has demonstrated.
  */
 export function blendTrustScores(
   additiveScore: number,

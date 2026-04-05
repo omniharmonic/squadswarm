@@ -1,5 +1,6 @@
 import { db, attestations, contracts, users, squads, squadMembers, deliverables, activityLog } from '@squadswarm/db';
 import { eq, and } from 'drizzle-orm';
+import { resolveSkillSlugs, updateUserSkillPortfolio } from '@/lib/skill-service';
 import { createContractCompletionAttestation, createClientSatisfactionAttestation } from '@squadswarm/web3';
 
 /**
@@ -118,10 +119,89 @@ export async function createContractAttestations(contractId: string): Promise<vo
       });
     }
 
-    console.log(`[Attestations] Created for contract ${contractId}: completion + ${ratingData ? 'satisfaction' : 'no rating'} + ${agentIds.size} agent(s)`);
+    // 4. Skill attestations for completed/approved deliverables
+    await createSkillAttestations(contractId);
+
+    console.log(`[Attestations] Created for contract ${contractId}: completion + ${ratingData ? 'satisfaction' : 'no rating'} + ${agentIds.size} agent(s) + skills`);
   } catch (error) {
     console.error('[Attestations] Error creating attestations:', error);
     // Non-fatal — don't fail the completion
+  }
+}
+
+/**
+ * Create skill attestations for all completed/approved deliverables in a contract.
+ *
+ * For each deliverable with requiredSkills:
+ * 1. Resolve skill slugs to skill records (creating if needed)
+ * 2. Create skill_verification attestation in DB
+ * 3. Upsert user_skills: increment count, recalculate proficiency
+ * 4. Increment skill usageCount
+ */
+export async function createSkillAttestations(contractId: string): Promise<void> {
+  try {
+    const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
+    if (!contract) return;
+
+    const contractDeliverables = await db
+      .select()
+      .from(deliverables)
+      .where(eq(deliverables.contractId, contractId));
+
+    // Only process approved or completed deliverables
+    const eligibleDeliverables = contractDeliverables.filter(
+      (d) => d.status === 'approved' || d.status === 'completed'
+    );
+
+    let skillAttestationCount = 0;
+
+    for (const deliverable of eligibleDeliverables) {
+      const requiredSkills = (deliverable.requiredSkills as string[] | null) ?? [];
+      if (!requiredSkills.length) continue;
+
+      // Determine the assignee (member or agent)
+      const assigneeUserId = deliverable.assignedMemberId;
+      const assigneeAgentId = deliverable.assignedAgentId;
+      if (!assigneeUserId && !assigneeAgentId) continue;
+
+      // Resolve all skill slugs to skill records
+      const resolvedSkills = await resolveSkillSlugs(requiredSkills);
+
+      for (const skill of resolvedSkills) {
+        // Create skill_verification attestation
+        await db.insert(attestations).values({
+          contractId,
+          userId: assigneeUserId ?? undefined,
+          agentId: assigneeAgentId ?? undefined,
+          squadId: contract.squadId,
+          type: 'skill_verification',
+          schemaUid: 'SKILL_VERIFICATION',
+          data: {
+            skill: skill.name,
+            slug: skill.slug,
+            proficiency: 1,
+            evidenceContractId: contractId,
+            deliverableTitle: deliverable.title,
+          },
+          onChain: false,
+          chainId: '8453',
+        });
+
+        skillAttestationCount++;
+
+        // Update user skill portfolio (only for human members, not agents)
+        if (assigneeUserId) {
+          await updateUserSkillPortfolio(assigneeUserId, [skill.slug], contractId);
+        }
+      }
+    }
+
+    if (skillAttestationCount > 0) {
+      console.log(`[Attestations] Created ${skillAttestationCount} skill attestation(s) for contract ${contractId}`);
+    }
+  } catch (error) {
+    console.error('[Attestations] Error creating skill attestations:', error);
+    // Non-fatal — don't fail the parent attestation flow
   }
 }
 

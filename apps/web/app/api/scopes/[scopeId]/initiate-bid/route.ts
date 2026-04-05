@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, ne } from 'drizzle-orm';
 import { db, scopes, bids, squads, squadMembers, users, notifications } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { meetsThreshold, getThresholdGap, TRUST_THRESHOLDS } from '@/lib/trust-threshold';
 
 /**
  * POST /api/scopes/[scopeId]/initiate-bid
@@ -64,6 +65,34 @@ export async function POST(
         { error: 'You must be a member of the squad to initiate a bid' },
         { status: 403 }
       );
+    }
+
+    // Enforce trust threshold
+    const threshold = scope.trustThreshold || 'open';
+    if (threshold !== 'open') {
+      const [squad] = await db
+        .select({ trustScore: squads.trustScore })
+        .from(squads)
+        .where(eq(squads.id, squadId))
+        .limit(1);
+
+      const squadScore = squad?.trustScore ? Number(squad.trustScore) : 0;
+      const { meets, gap, required } = getThresholdGap(squadScore, threshold);
+
+      if (!meets) {
+        const thresholdConfig = TRUST_THRESHOLDS[threshold] || TRUST_THRESHOLDS.open;
+        return NextResponse.json(
+          {
+            error: 'Trust threshold not met',
+            details: `This scope requires '${thresholdConfig.label}' status (trust score >= ${required}). Your squad's current trust score is ${squadScore}. Complete contracts and earn positive ratings to increase your score.`,
+            squadScore,
+            required,
+            gap,
+            threshold,
+          },
+          { status: 403 }
+        );
+      }
     }
 
     // Check if this squad already has an active bid on this scope

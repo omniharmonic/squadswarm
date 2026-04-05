@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
+const TRUST_THRESHOLDS: Record<string, { minScore: number; label: string; description: string }> = {
+  open: { minScore: 0, label: 'Open', description: 'Anyone can bid' },
+  verified: { minScore: 25, label: 'Verified', description: 'Requires basic track record (trust score >= 25)' },
+  trusted: { minScore: 50, label: 'Trusted', description: 'Requires established reputation (trust score >= 50)' },
+  elite: { minScore: 75, label: 'Elite', description: 'Requires top-tier reputation (trust score >= 75)' },
+};
+
 interface Scope {
   id: string;
   title: string;
@@ -27,6 +34,12 @@ interface SessionUser {
     id: string;
     email: string;
   };
+}
+
+interface UserSquad {
+  id: string;
+  name: string;
+  trustScore?: number;
 }
 
 function formatBudget(min: string | null, max: string | null) {
@@ -61,6 +74,8 @@ export default function ScopeDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userSquads, setUserSquads] = useState<UserSquad[]>([]);
+  const [bidError, setBidError] = useState('');
 
   useEffect(() => {
     fetch(`/api/scopes/${scopeId}`)
@@ -75,7 +90,22 @@ export default function ScopeDetailPage() {
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data: SessionUser) => {
-        if (data.user?.id) setCurrentUserId(data.user.id);
+        if (data.user?.id) {
+          setCurrentUserId(data.user.id);
+          // Fetch user's squads with trust scores
+          fetch('/api/squads')
+            .then((res) => res.json())
+            .then((squads) => {
+              if (Array.isArray(squads)) {
+                setUserSquads(squads.map((s: Record<string, unknown>) => ({
+                  id: s.id as string,
+                  name: s.name as string,
+                  trustScore: s.trustScore ? Number(s.trustScore) : 0,
+                })));
+              }
+            })
+            .catch(() => {});
+        }
       })
       .catch(() => {});
   }, [scopeId]);
@@ -160,6 +190,9 @@ export default function ScopeDetailPage() {
             <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium capitalize ${trustColors[scope.trustThreshold || 'open'] ?? trustColors.open}`}>
               {scope.trustThreshold || 'Open'}
             </span>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              {TRUST_THRESHOLDS[scope.trustThreshold || 'open']?.description || 'Anyone can bid'}
+            </p>
           </div>
           <div>
             <p className="text-xs text-text-secondary mb-0.5">Status</p>
@@ -231,18 +264,56 @@ export default function ScopeDetailPage() {
         <div className="bg-white rounded-xl border border-border p-6 sm:p-8">
           <h2 className="text-lg font-semibold mb-2 text-center">Ready to work on this scope?</h2>
           <p className="text-sm text-text-secondary mb-5 text-center">Coordinate with your squad to build a bid together, or create one yourself.</p>
+
+          {/* Trust threshold eligibility for user's squads */}
+          {(scope.trustThreshold || 'open') !== 'open' && userSquads.length > 0 && (() => {
+            const threshold = scope.trustThreshold || 'open';
+            const thresholdConfig = TRUST_THRESHOLDS[threshold];
+            const required = thresholdConfig?.minScore || 0;
+            const eligible = userSquads.filter(s => (s.trustScore || 0) >= required);
+            const ineligible = userSquads.filter(s => (s.trustScore || 0) < required);
+
+            return (
+              <div className="mb-5 space-y-2">
+                {eligible.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-success bg-success/5 rounded-lg px-3 py-2">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    <span>{eligible.map(s => s.name).join(', ')} {eligible.length === 1 ? 'meets' : 'meet'} the {thresholdConfig?.label} threshold</span>
+                  </div>
+                )}
+                {ineligible.length > 0 && (
+                  <div className="text-sm text-warning bg-warning/5 rounded-lg px-3 py-2 space-y-1">
+                    {ineligible.map(s => (
+                      <div key={s.id} className="flex items-center gap-2">
+                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>{s.name} needs {required - (s.trustScore || 0)} more points to bid (score: {s.trustScore || 0}/{required})</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {bidError && (
+            <div className="mb-4 p-3 bg-error/5 border border-error/20 rounded-lg text-sm text-error">
+              {bidError}
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
               onClick={async () => {
+                setBidError('');
                 // Fetch user's squads to pick one
                 const res = await fetch('/api/squads');
-                const squads = await res.json();
-                if (!Array.isArray(squads) || squads.length === 0) {
+                const squadsData = await res.json();
+                if (!Array.isArray(squadsData) || squadsData.length === 0) {
                   window.location.href = '/squads/new';
                   return;
                 }
                 // For now, use first squad — could show a picker if multiple
-                const squadId = squads[0].id;
+                const squadId = squadsData[0].id;
                 const initRes = await fetch(`/api/scopes/${scope.id}/initiate-bid`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -254,8 +325,11 @@ export default function ScopeDetailPage() {
                 } else {
                   const errData = await initRes.json();
                   if (errData.existingBidId) {
-                    // Squad already has a bid — go to its collaborate page
                     window.location.href = `/bids/${errData.existingBidId}/collaborate`;
+                  } else if (errData.error === 'Trust threshold not met') {
+                    setBidError(errData.details || 'Your squad does not meet the trust threshold for this scope.');
+                  } else {
+                    setBidError(errData.error || 'Failed to start bid discussion.');
                   }
                 }
               }}

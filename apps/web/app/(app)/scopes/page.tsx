@@ -131,9 +131,9 @@ const trustColors: Record<string, string> = {
 
 const thresholdScores: Record<string, number> = {
   open: 0,
-  verified: 30,
-  trusted: 60,
-  elite: 80,
+  verified: 25,
+  trusted: 50,
+  elite: 75,
 };
 
 function TrustThresholdBadge({ threshold }: { threshold: string }) {
@@ -159,7 +159,18 @@ interface RecommendedScope {
   matchScore: number;
 }
 
-function ScopeCard({ scope }: { scope: ScopeItem }) {
+interface UserSquadInfo {
+  id: string;
+  name: string;
+  trustScore: number;
+}
+
+function ScopeCard({ scope, userSquads }: { scope: ScopeItem; userSquads?: UserSquadInfo[] }) {
+  const threshold = scope.trustThreshold || 'open';
+  const required = thresholdScores[threshold] ?? 0;
+  const hasSquads = userSquads && userSquads.length > 0;
+  const canAnySquadBid = !hasSquads || threshold === 'open' || userSquads.some(s => s.trustScore >= required);
+
   return (
     <Link
       href={scope._isMock ? '#' : `/scopes/${scope.id}`}
@@ -201,7 +212,15 @@ function ScopeCard({ scope }: { scope: ScopeItem }) {
 
       {/* Footer */}
       <div className="flex items-center justify-between pt-3 border-t border-border">
-        <TrustThresholdBadge threshold={scope.trustThreshold || 'open'} />
+        <div className="flex items-center gap-1.5">
+          <TrustThresholdBadge threshold={scope.trustThreshold || 'open'} />
+          {hasSquads && !canAnySquadBid && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning" title={`Requires trust score >= ${required}`}>
+              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+              Locked
+            </span>
+          )}
+        </div>
         <span className="text-xs text-text-secondary">
           {scope.biddingDeadline ? daysLeft(scope.biddingDeadline) : ''}
         </span>
@@ -215,6 +234,7 @@ export default function ScopeBoardPage() {
   const [mockScopes, setMockScopes] = useState<ScopeItem[]>(MOCK_SCOPES);
   const [loading, setLoading] = useState(true);
   const [recommended, setRecommended] = useState<RecommendedScope[]>([]);
+  const [userSquads, setUserSquads] = useState<UserSquadInfo[]>([]);
 
   useEffect(() => {
     fetch('/api/scopes')
@@ -244,6 +264,23 @@ export default function ScopeBoardPage() {
       .catch(() => {
         // silently fail — no recommendations shown
       });
+
+    // Fetch user's squads for threshold checking
+    fetch('/api/squads')
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed');
+        return res.json();
+      })
+      .then((squads) => {
+        if (Array.isArray(squads)) {
+          setUserSquads(squads.map((s: Record<string, unknown>) => ({
+            id: s.id as string,
+            name: s.name as string,
+            trustScore: s.trustScore ? Number(s.trustScore) : 0,
+          })));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -312,7 +349,7 @@ export default function ScopeBoardPage() {
           {realScopes.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {realScopes.map((scope) => (
-                <ScopeCard key={scope.id} scope={scope} />
+                <ScopeCard key={scope.id} scope={scope} userSquads={userSquads} />
               ))}
             </div>
           )}
@@ -331,7 +368,7 @@ export default function ScopeBoardPage() {
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {mockScopes.map((scope) => (
-                  <ScopeCard key={scope.id} scope={scope} />
+                  <ScopeCard key={scope.id} scope={scope} userSquads={userSquads} />
                 ))}
               </div>
             </>
