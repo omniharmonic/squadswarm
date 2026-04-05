@@ -479,6 +479,33 @@ export default function ContractOverviewPage() {
       });
       await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
 
+      // Verify allowance is actually set before proceeding
+      // (RPC nodes can have propagation delay even after receipt)
+      setFundingError('Step 2/3: Verifying allowance...');
+      const ALLOWANCE_ABI = [{
+        type: 'function' as const,
+        name: 'allowance',
+        inputs: [
+          { name: 'owner', type: 'address' },
+          { name: 'spender', type: 'address' },
+        ],
+        outputs: [{ name: '', type: 'uint256' }],
+        stateMutability: 'view' as const,
+      }] as const;
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          const allowance = await publicClient.readContract({
+            address: usdcAddr,
+            abi: ALLOWANCE_ABI,
+            functionName: 'allowance',
+            args: [address!, escrowAddr],
+          });
+          if (allowance >= depositAmount) break;
+        } catch {}
+        await new Promise(r => setTimeout(r, 2000));
+      }
+
       // Step 3: Deposit to escrow
       setFundingError('Step 3/3: Depositing USDC to escrow...');
       const depositTx = await walletClient!.writeContract({
