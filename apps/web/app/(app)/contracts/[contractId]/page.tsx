@@ -422,7 +422,7 @@ export default function ContractOverviewPage() {
 
       if (!escrowExists) {
         setFundingError('Step 1/3: Creating escrow on-chain...');
-        await walletClient!.writeContract({
+        const createTxHash = await walletClient!.writeContract({
           account: address!,
           chain: walletClient!.chain!,
           address: escrowAddr,
@@ -439,11 +439,16 @@ export default function ContractOverviewPage() {
             BigInt(5000),
           ],
         });
+        // Wait for create tx to confirm
+        setFundingError('Step 1/3: Waiting for escrow creation...');
+        const { createPublicClient: cpc1, http: http1 } = await import('viem');
+        const pc1 = cpc1({ chain: walletClient!.chain!, transport: http1(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org') });
+        await pc1.waitForTransactionReceipt({ hash: createTxHash });
       } else {
         setFundingError('Step 1/3: Escrow already exists ✓');
       }
 
-      // Step 2: Approve USDC spend
+      // Step 2: Approve USDC spend and WAIT for confirmation
       setFundingError('Step 2/3: Approving USDC spend...');
       const ERC20_APPROVE_ABI = [{
         type: 'function' as const,
@@ -456,7 +461,7 @@ export default function ContractOverviewPage() {
         stateMutability: 'nonpayable' as const,
       }] as const;
 
-      await walletClient!.writeContract({
+      const approveTxHash = await walletClient!.writeContract({
         account: address!,
         chain: walletClient!.chain!,
         address: usdcAddr,
@@ -464,6 +469,15 @@ export default function ContractOverviewPage() {
         functionName: 'approve',
         args: [escrowAddr, depositAmount],
       });
+
+      // Wait for the approve tx to be confirmed before depositing
+      setFundingError('Step 2/3: Waiting for approval confirmation...');
+      const { createPublicClient: cpc, http: httpTransport } = await import('viem');
+      const publicClient = cpc({
+        chain: walletClient!.chain!,
+        transport: httpTransport(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org'),
+      });
+      await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
 
       // Step 3: Deposit to escrow
       setFundingError('Step 3/3: Depositing USDC to escrow...');
