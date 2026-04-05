@@ -397,9 +397,31 @@ export default function ContractOverviewPage() {
       const splitterAddr = squadPaymentAddr; // Squad's multisig receives funds directly for now
 
       // Step 1: Create the escrow contract on-chain (if not already created)
-      setFundingError('Step 1/3: Creating escrow on-chain...');
+      // First check if it already exists by reading on-chain state
+      setFundingError('Step 1/3: Checking escrow...');
+      let escrowExists = false;
       try {
-        const createTx = await walletClient!.writeContract({
+        const { createPublicClient, http } = await import('viem');
+        const publicClient = createPublicClient({
+          chain: walletClient!.chain!,
+          transport: http(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org'),
+        });
+        const onChainContract = await publicClient.readContract({
+          address: escrowAddr,
+          abi: SQUAD_SWARM_ESCROW_ABI,
+          functionName: 'getContract',
+          args: [contractIdHex],
+        });
+        // If client address is not zero, contract exists
+        const contractData = onChainContract as { client: string };
+        escrowExists = contractData.client !== '0x0000000000000000000000000000000000000000';
+      } catch {
+        // Read failed — assume doesn't exist
+      }
+
+      if (!escrowExists) {
+        setFundingError('Step 1/3: Creating escrow on-chain...');
+        await walletClient!.writeContract({
           account: address!,
           chain: walletClient!.chain!,
           address: escrowAddr,
@@ -407,21 +429,17 @@ export default function ContractOverviewPage() {
           functionName: 'createContract',
           args: [
             contractIdHex,
-            splitterAddr,      // squad/splitter address
-            splitterAddr,      // payment splitter (same for now)
-            usdcAddr,          // USDC token
-            depositAmount,     // total amount
-            BigInt(2500),      // 25% upfront
-            BigInt(5000),      // 50/50 default dispute split
+            splitterAddr,
+            splitterAddr,
+            usdcAddr,
+            depositAmount,
+            BigInt(2500),
+            BigInt(5000),
             BigInt(5000),
           ],
         });
-      } catch (createErr: unknown) {
-        const msg = createErr instanceof Error ? createErr.message : '';
-        // "Contract exists" means it was already created — that's fine
-        if (!msg.includes('Contract exists') && !msg.includes('already')) {
-          throw createErr;
-        }
+      } else {
+        setFundingError('Step 1/3: Escrow already exists ✓');
       }
 
       // Step 2: Approve USDC spend
