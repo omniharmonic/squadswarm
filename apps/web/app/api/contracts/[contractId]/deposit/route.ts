@@ -46,6 +46,31 @@ export async function POST(
     );
   }
 
+  // Optional: verify the transaction on-chain if RPC is configured
+  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL;
+  const escrowAddress = process.env.NEXT_PUBLIC_ESCROW_ADDRESS;
+  if (rpcUrl && escrowAddress) {
+    try {
+      const { createPublicClient, http } = await import('viem');
+      const { baseSepolia } = await import('viem/chains');
+      const publicClient = createPublicClient({
+        chain: baseSepolia,
+        transport: http(rpcUrl),
+      });
+      const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+      if (!receipt || receipt.status !== 'success') {
+        return NextResponse.json({ error: 'Transaction not confirmed on-chain' }, { status: 400 });
+      }
+      // Verify the transaction was to the escrow contract
+      if (receipt.to?.toLowerCase() !== escrowAddress.toLowerCase()) {
+        return NextResponse.json({ error: 'Transaction was not to the escrow contract' }, { status: 400 });
+      }
+    } catch (verifyError) {
+      console.error('[Deposit] On-chain verification failed:', verifyError);
+      // Non-fatal for now — log but proceed (testnet may have RPC issues)
+    }
+  }
+
   // Store the txHash in the payment schedule metadata and activate the contract
   const existingSchedule = (contract.paymentSchedule ?? {}) as Record<string, unknown>;
 

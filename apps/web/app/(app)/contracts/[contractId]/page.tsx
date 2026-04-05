@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useWeb3 } from '@/components/web3-provider';
+import { type Address, type Hex } from 'viem';
+import { SQUAD_SWARM_ESCROW_ABI, generateContractId, toUSDC } from '@squadswarm/web3';
 
 /* ── Rating types & helpers ─────────────────────────────────── */
 interface Rating {
@@ -149,7 +151,7 @@ interface Dispute {
 export default function ContractOverviewPage() {
   const params = useParams();
   const contractId = params.contractId as string;
-  const { connect, isConnected, connecting } = useWeb3();
+  const { connect, isConnected, connecting, walletClient, address } = useWeb3();
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
   const [funding, setFunding] = useState(false);
@@ -337,27 +339,81 @@ export default function ContractOverviewPage() {
   }, [contractId, fetchRating, fetchCollabLinks]);
 
   async function handleFundContract() {
+    if (!walletClient || !address) {
+      try {
+        const addr = await connect();
+        if (!addr) return;
+      } catch {
+        return;
+      }
+    }
+
     setFunding(true);
     setFundingError('');
     try {
-      // Step 1: Connect wallet if not connected
-      if (!isConnected) {
-        const addr = await connect();
-        if (!addr) {
-          setFunding(false);
-          return;
+      const escrowAddr = process.env.NEXT_PUBLIC_ESCROW_ADDRESS as Address | undefined;
+      const usdcAddr = process.env.NEXT_PUBLIC_USDC_ADDRESS as Address | undefined;
+
+      if (!escrowAddr || !usdcAddr) {
+        // Contracts not deployed yet — use stub flow
+        const mockTxHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+        const res = await fetch(`/api/contracts/${contractId}/deposit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ txHash: mockTxHash }),
+        });
+        if (res.ok) {
+          await fetchContract();
+        } else {
+          const err = await res.json();
+          setFundingError(err.error || 'Failed to record deposit');
         }
+        return;
       }
 
-      // Step 2: In production, this would call depositToEscrow() from @squadswarm/web3
-      // For now, simulate the on-chain deposit and generate a mock txHash
-      const mockTxHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+      // REAL ON-CHAIN FLOW
+      const depositAmount = toUSDC(parseFloat(contract!.totalAmount));
 
-      // Step 3: Record the deposit on the server
+      // Step 1: Approve USDC spend
+      setFundingError('Step 1/2: Approving USDC spend...');
+      const ERC20_APPROVE_ABI = [{
+        type: 'function' as const,
+        name: 'approve',
+        inputs: [
+          { name: 'spender', type: 'address', internalType: 'address' },
+          { name: 'amount', type: 'uint256', internalType: 'uint256' },
+        ],
+        outputs: [{ name: '', type: 'bool', internalType: 'bool' }],
+        stateMutability: 'nonpayable' as const,
+      }] as const;
+
+      const approveTx = await walletClient!.writeContract({
+        account: address!,
+        chain: walletClient!.chain!,
+        address: usdcAddr,
+        abi: ERC20_APPROVE_ABI,
+        functionName: 'approve',
+        args: [escrowAddr, depositAmount],
+      });
+
+      // Step 2: Deposit to escrow
+      setFundingError('Step 2/2: Depositing to escrow...');
+      const contractIdHex = generateContractId(contractId, 0) as Hex;
+
+      const depositTx = await walletClient!.writeContract({
+        account: address!,
+        chain: walletClient!.chain!,
+        address: escrowAddr,
+        abi: SQUAD_SWARM_ESCROW_ABI,
+        functionName: 'deposit',
+        args: [contractIdHex],
+      });
+
+      // Step 3: Record on server with real txHash
       const res = await fetch(`/api/contracts/${contractId}/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ txHash: mockTxHash }),
+        body: JSON.stringify({ txHash: depositTx }),
       });
 
       if (res.ok) {
@@ -367,7 +423,7 @@ export default function ContractOverviewPage() {
         setFundingError(err.error || 'Failed to record deposit');
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Wallet connection failed';
+      const msg = err instanceof Error ? err.message : 'Deposit failed';
       setFundingError(msg);
     } finally {
       setFunding(false);
@@ -378,6 +434,25 @@ export default function ContractOverviewPage() {
     setCompleting(true);
     setCompleteError('');
     try {
+      const escrowAddr = process.env.NEXT_PUBLIC_ESCROW_ADDRESS as Address | undefined;
+
+      if (escrowAddr && walletClient && address) {
+        // REAL ON-CHAIN FLOW: call complete() on escrow first
+        setCompleteError('Completing contract on-chain...');
+        const contractIdHex = generateContractId(contractId, 0) as Hex;
+
+        await walletClient.writeContract({
+          account: address,
+          chain: walletClient.chain!,
+          address: escrowAddr,
+          abi: SQUAD_SWARM_ESCROW_ABI,
+          functionName: 'complete',
+          args: [contractIdHex],
+        });
+        setCompleteError('');
+      }
+
+      // Record completion on the server (works for both stub and real flows)
       const res = await fetch(`/api/contracts/${contractId}/complete`, { method: 'POST' });
       if (res.ok) {
         setShowCompleteConfirm(false);
@@ -386,8 +461,8 @@ export default function ContractOverviewPage() {
         const err = await res.json();
         setCompleteError(err.error || 'Failed to complete contract');
       }
-    } catch {
-      setCompleteError('Network error');
+    } catch (err) {
+      setCompleteError(err instanceof Error ? err.message : 'Network error');
     } finally {
       setCompleting(false);
     }

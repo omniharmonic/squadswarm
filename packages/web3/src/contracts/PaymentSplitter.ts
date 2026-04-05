@@ -4,6 +4,7 @@ export const PAYMENT_SPLITTER_ABI = [
     inputs: [
       { name: "_members", type: "address[]", internalType: "address[]" },
       { name: "_shares", type: "uint256[]", internalType: "uint256[]" },
+      { name: "_escrowContract", type: "address", internalType: "address" },
     ],
     stateMutability: "nonpayable",
   },
@@ -17,6 +18,13 @@ export const PAYMENT_SPLITTER_ABI = [
   {
     type: "function",
     name: "owner",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "escrowContract",
     inputs: [],
     outputs: [{ name: "", type: "address", internalType: "address" }],
     stateMutability: "view",
@@ -37,7 +45,7 @@ export const PAYMENT_SPLITTER_ABI = [
   },
   {
     type: "function",
-    name: "totalShares",
+    name: "TOTAL_SHARES",
     inputs: [],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",

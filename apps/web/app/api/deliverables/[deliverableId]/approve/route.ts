@@ -34,22 +34,10 @@ export async function POST(
     return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
   }
 
-  // Auth: user must be contract participant
+  // Auth: only the contract client can approve deliverables
   const isClient = contract.clientId === session.userId;
   if (!isClient) {
-    const [membership] = await db
-      .select()
-      .from(squadMembers)
-      .where(
-        and(
-          eq(squadMembers.squadId, contract.squadId),
-          eq(squadMembers.userId, session.userId)
-        )
-      )
-      .limit(1);
-    if (!membership) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    return NextResponse.json({ error: 'Only the contract client can approve deliverables' }, { status: 403 });
   }
 
   // Only in_review deliverables can be approved
@@ -98,11 +86,11 @@ export async function POST(
     },
   });
 
-  // Log the payment release event
+  // Log the payment pending event (actual on-chain release happens separately)
   await db.insert(activityLog).values({
     contractId: deliverable.contractId,
     actorUserId: session.userId,
-    action: 'payment_released',
+    action: 'payment_pending',
     entityType: 'deliverable',
     entityId: deliverableId,
     metadata: {

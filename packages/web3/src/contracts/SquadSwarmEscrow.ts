@@ -1,5 +1,19 @@
 export const SQUAD_SWARM_ESCROW_ABI = [
   {
+    type: "constructor",
+    inputs: [
+      { name: "_arbitrator", type: "address", internalType: "address" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "arbitrator",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
     type: "function",
     name: "createContract",
     inputs: [
@@ -116,9 +130,11 @@ export const SQUAD_SWARM_ESCROW_ABI = [
     name: "ContractCreated",
     inputs: [
       { name: "contractId", type: "bytes32", indexed: true, internalType: "bytes32" },
-      { name: "client", type: "address", indexed: false, internalType: "address" },
-      { name: "squad", type: "address", indexed: false, internalType: "address" },
+      { name: "client", type: "address", indexed: true, internalType: "address" },
+      { name: "squad", type: "address", indexed: true, internalType: "address" },
       { name: "totalAmount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "paymentSplitter", type: "address", indexed: false, internalType: "address" },
+      { name: "token", type: "address", indexed: false, internalType: "address" },
     ],
     anonymous: false,
   },
@@ -128,16 +144,26 @@ export const SQUAD_SWARM_ESCROW_ABI = [
     inputs: [
       { name: "contractId", type: "bytes32", indexed: true, internalType: "bytes32" },
       { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "upfrontReleased", type: "uint256", indexed: false, internalType: "uint256" },
     ],
     anonymous: false,
   },
   {
     type: "event",
-    name: "Released",
+    name: "MilestoneReleased",
     inputs: [
       { name: "contractId", type: "bytes32", indexed: true, internalType: "bytes32" },
       { name: "amount", type: "uint256", indexed: false, internalType: "uint256" },
-      { name: "to", type: "address", indexed: false, internalType: "address" },
+      { name: "totalReleased", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "Completed",
+    inputs: [
+      { name: "contractId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "finalRelease", type: "uint256", indexed: false, internalType: "uint256" },
     ],
     anonymous: false,
   },
@@ -146,6 +172,7 @@ export const SQUAD_SWARM_ESCROW_ABI = [
     name: "DisputeRaised",
     inputs: [
       { name: "contractId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "raisedBy", type: "address", indexed: false, internalType: "address" },
       { name: "deadline", type: "uint256", indexed: false, internalType: "uint256" },
     ],
     anonymous: false,
@@ -157,14 +184,17 @@ export const SQUAD_SWARM_ESCROW_ABI = [
       { name: "contractId", type: "bytes32", indexed: true, internalType: "bytes32" },
       { name: "clientAmount", type: "uint256", indexed: false, internalType: "uint256" },
       { name: "squadAmount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "resolvedBy", type: "address", indexed: false, internalType: "address" },
     ],
     anonymous: false,
   },
   {
     type: "event",
-    name: "Completed",
+    name: "AutoSplit",
     inputs: [
       { name: "contractId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "clientAmount", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "squadAmount", type: "uint256", indexed: false, internalType: "uint256" },
     ],
     anonymous: false,
   },

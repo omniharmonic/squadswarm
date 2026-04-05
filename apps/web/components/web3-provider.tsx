@@ -2,7 +2,11 @@
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { createWalletClient, custom, type WalletClient, type Address } from 'viem';
-import { base } from 'viem/chains';
+import { base, baseSepolia } from 'viem/chains';
+
+// Determine the target chain from env — defaults to Base Sepolia for testnet
+const TARGET_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || '84532');
+const TARGET_CHAIN = TARGET_CHAIN_ID === 8453 ? base : baseSepolia;
 
 interface Web3Context {
   walletClient: WalletClient | null;
@@ -11,6 +15,7 @@ interface Web3Context {
   connecting: boolean;
   connect: () => Promise<Address | null>;
   disconnect: () => void;
+  targetChain: typeof TARGET_CHAIN;
 }
 
 const Web3Ctx = createContext<Web3Context>({
@@ -20,10 +25,54 @@ const Web3Ctx = createContext<Web3Context>({
   connecting: false,
   connect: async () => null,
   disconnect: () => {},
+  targetChain: TARGET_CHAIN,
 });
 
 export function useWeb3() {
   return useContext(Web3Ctx);
+}
+
+/** Request the wallet to switch to our target chain. Returns true on success. */
+async function ensureCorrectChain(): Promise<boolean> {
+  if (typeof window === 'undefined' || !window.ethereum) return false;
+
+  try {
+    const currentChainHex = await window.ethereum.request({ method: 'eth_chainId' }) as string;
+    const currentChainId = parseInt(currentChainHex, 16);
+
+    if (currentChainId === TARGET_CHAIN_ID) return true;
+
+    // Request chain switch
+    const targetHex = `0x${TARGET_CHAIN_ID.toString(16)}`;
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetHex }],
+      });
+      return true;
+    } catch (switchError: unknown) {
+      // If the chain hasn't been added yet, add it
+      const err = switchError as { code?: number };
+      if (err.code === 4902) {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: targetHex,
+            chainName: TARGET_CHAIN.name,
+            nativeCurrency: TARGET_CHAIN.nativeCurrency,
+            rpcUrls: [TARGET_CHAIN.rpcUrls.default.http[0]],
+            blockExplorerUrls: TARGET_CHAIN.blockExplorers
+              ? [TARGET_CHAIN.blockExplorers.default.url]
+              : [],
+          }],
+        });
+        return true;
+      }
+      throw switchError;
+    }
+  } catch {
+    return false;
+  }
 }
 
 export function Web3Provider({ children }: { children: React.ReactNode }) {
@@ -35,12 +84,13 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   // Auto-reconnect on mount if wallet was previously connected
   useEffect(() => {
     if (typeof window !== 'undefined' && window.ethereum) {
-      window.ethereum.request({ method: 'eth_accounts' }).then((accounts: unknown) => {
+      window.ethereum.request({ method: 'eth_accounts' }).then(async (accounts: unknown) => {
         const accts = accounts as Address[];
         if (accts.length > 0) {
+          await ensureCorrectChain();
           const client = createWalletClient({
             account: accts[0],
-            chain: base,
+            chain: TARGET_CHAIN,
             transport: custom(window.ethereum!),
           });
           setWalletClient(client);
@@ -65,9 +115,13 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
     try {
       const [addr] = await window.ethereum.request({ method: 'eth_requestAccounts' }) as Address[];
+
+      // Ensure the wallet is on the correct chain
+      await ensureCorrectChain();
+
       const client = createWalletClient({
         account: addr,
-        chain: base,
+        chain: TARGET_CHAIN,
         transport: custom(window.ethereum),
       });
 
@@ -94,7 +148,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Web3Ctx.Provider value={{ walletClient, address, isConnected: !!address, connecting, connect, disconnect }}>
+    <Web3Ctx.Provider value={{ walletClient, address, isConnected: !!address, connecting, connect, disconnect, targetChain: TARGET_CHAIN }}>
       {children}
     </Web3Ctx.Provider>
   );
