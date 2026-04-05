@@ -130,7 +130,7 @@ export default function DashboardPage() {
     // Fetch trust score
     fetch('/api/users/me/trust-score')
       .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
-      .then((data: { score: number }) => setTrustScore(String(data.score)))
+      .then((data: { trustScore: number }) => setTrustScore(String(data.trustScore)))
       .catch(() => setTrustScore('-'));
 
     // Fetch recent activity from first contract

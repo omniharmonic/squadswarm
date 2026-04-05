@@ -67,14 +67,53 @@ export async function POST(
     .where(eq(deliverables.id, deliverableId))
     .returning();
 
-  // Log activity
+  // Calculate proportional USDC payment release for this deliverable
+  const allContractDeliverables = await db
+    .select()
+    .from(deliverables)
+    .where(eq(deliverables.contractId, deliverable.contractId));
+
+  const totalDeliverables = allContractDeliverables.length;
+  const totalAmount = parseFloat(contract.totalAmount);
+  const deliverablePayment = totalDeliverables > 0 ? totalAmount / totalDeliverables : 0;
+
+  // Count how many are now approved (including the one we just approved)
+  const nowApprovedCount = allContractDeliverables.filter(d =>
+    d.id === deliverableId ? true : d.status === 'approved'
+  ).length;
+  const releasedAmount = deliverablePayment * nowApprovedCount;
+
+  // Log activity with payment release info
   await db.insert(activityLog).values({
     contractId: deliverable.contractId,
     actorUserId: session.userId,
     action: 'deliverable_approved',
     entityType: 'deliverable',
     entityId: deliverableId,
-    metadata: { title: deliverable.title },
+    metadata: {
+      title: deliverable.title,
+      paymentReleased: deliverablePayment.toFixed(2),
+      token: 'USDC',
+      chain: 'base',
+    },
+  });
+
+  // Log the payment release event
+  await db.insert(activityLog).values({
+    contractId: deliverable.contractId,
+    actorUserId: session.userId,
+    action: 'payment_released',
+    entityType: 'deliverable',
+    entityId: deliverableId,
+    metadata: {
+      amount: deliverablePayment.toFixed(2),
+      totalReleased: releasedAmount.toFixed(2),
+      totalAmount: totalAmount.toFixed(2),
+      deliverableIndex: nowApprovedCount,
+      totalDeliverables,
+      token: 'USDC',
+      chain: 'base',
+    },
   });
 
   // Check if all deliverables in the workstream are approved
@@ -124,7 +163,13 @@ export async function POST(
         action: 'contract_completed',
         entityType: 'contract',
         entityId: deliverable.contractId,
-        metadata: {},
+        metadata: {
+          totalAmount: totalAmount.toFixed(2),
+          totalReleased: totalAmount.toFixed(2),
+          token: 'USDC',
+          chain: 'base',
+          allDeliverablesApproved: true,
+        },
       });
     }
   }

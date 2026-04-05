@@ -8,7 +8,6 @@ interface SquadData {
   id: string;
   name: string;
   revenueSplitDefault: Record<string, number> | null;
-  paymentMode: string;
   multisigAddress: string | null;
 }
 
@@ -34,8 +33,10 @@ export default function FinancialDashboardPage() {
   const [squad, setSquad] = useState<SquadData | null>(null);
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [paymentMode, setPaymentMode] = useState<'fiat' | 'crypto'>('fiat');
-  const [savingMode, setSavingMode] = useState(false);
+
+  // Treasury split config state
+  const [treasuryPct, setTreasuryPct] = useState(20);
+  const [savingSplit, setSavingSplit] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -48,16 +49,16 @@ export default function FinancialDashboardPage() {
         if (squadRes.ok) {
           const squadData = await squadRes.json();
           setSquad(squadData);
-          setPaymentMode(squadData.paymentMode === 'crypto' ? 'crypto' : 'fiat');
+          // Initialize treasury pct from existing split config
+          const split = squadData.revenueSplitDefault as Record<string, number> | null;
+          if (split?.treasury !== undefined) {
+            setTreasuryPct(split.treasury);
+          }
         }
 
         if (contractsRes.ok) {
           const allContracts: ContractRecord[] = await contractsRes.json();
-          // Filter to contracts belonging to this squad
           const squadContracts = allContracts.filter((c) => {
-            // The contract API returns squadId — but the enriched version may not expose it directly.
-            // We use squadName match or check the raw data.
-            // The contracts API returns full contract objects with squadId
             return (c as ContractRecord & { squadId?: string }).squadId === squadId;
           });
           setContracts(squadContracts);
@@ -71,22 +72,37 @@ export default function FinancialDashboardPage() {
     fetchData();
   }, [squadId]);
 
-  async function handlePaymentModeChange(mode: 'fiat' | 'crypto') {
-    setSavingMode(true);
+  async function handleSaveTreasurySplit() {
+    setSavingSplit(true);
     try {
+      const currentSplit = (squad?.revenueSplitDefault || { lead: 30, members: 50, treasury: 20 }) as Record<string, number>;
+      // Recalculate: treasury gets the slider value, the rest is distributed proportionally among non-treasury keys
+      const nonTreasuryTotal = 100 - treasuryPct;
+      const oldNonTreasuryTotal = Object.entries(currentSplit)
+        .filter(([k]) => k !== 'treasury')
+        .reduce((sum, [, v]) => sum + v, 0);
+
+      const newSplit: Record<string, number> = { treasury: treasuryPct };
+      for (const [key, value] of Object.entries(currentSplit)) {
+        if (key !== 'treasury') {
+          newSplit[key] = oldNonTreasuryTotal > 0
+            ? Math.round((value / oldNonTreasuryTotal) * nonTreasuryTotal)
+            : Math.round(nonTreasuryTotal / (Object.keys(currentSplit).length - 1));
+        }
+      }
+
       const res = await fetch(`/api/squads/${squadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMode: mode }),
+        body: JSON.stringify({ revenueSplitDefault: newSplit }),
       });
       if (res.ok) {
-        setPaymentMode(mode);
-        setSquad((prev) => prev ? { ...prev, paymentMode: mode } : prev);
+        setSquad((prev) => prev ? { ...prev, revenueSplitDefault: newSplit } : prev);
       }
     } catch {
       // silently fail
     } finally {
-      setSavingMode(false);
+      setSavingSplit(false);
     }
   }
 
@@ -122,6 +138,7 @@ export default function FinancialDashboardPage() {
   const activeContracts = contracts.filter((c) => c.status === 'active');
   const totalEscrowed = activeContracts.reduce((sum, c) => sum + parseFloat(c.totalAmount || '0'), 0);
   const revenueSplit = (squad.revenueSplitDefault || { lead: 30, members: 50, treasury: 20 }) as Record<string, number>;
+  const memberDistribution = 100 - treasuryPct;
 
   return (
     <div className="max-w-3xl">
@@ -139,7 +156,7 @@ export default function FinancialDashboardPage() {
       {/* Multisig Address */}
       <div className="bg-white rounded-xl border border-border p-5 mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Payment Wallet</h2>
+          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Payment Wallet (Base)</h2>
           <Link href={`/squads/${squadId}`} className="text-xs text-accent-squad hover:underline">
             Manage
           </Link>
@@ -167,53 +184,7 @@ export default function FinancialDashboardPage() {
           <p className="text-sm text-text-secondary">
             No multisig address configured.{' '}
             <Link href={`/squads/${squadId}`} className="text-accent-squad hover:underline">Set one up</Link>{' '}
-            to receive crypto payments.
-          </p>
-        )}
-      </div>
-
-      {/* Payment Mode Selector */}
-      <div className="bg-white rounded-xl border border-border p-5 mb-6">
-        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Payment Mode</h2>
-        <div className="flex gap-3">
-          <button
-            onClick={() => handlePaymentModeChange('fiat')}
-            disabled={savingMode}
-            className={`flex-1 rounded-lg border-2 p-4 text-left transition-all ${
-              paymentMode === 'fiat'
-                ? 'border-accent-client bg-accent-client/5'
-                : 'border-border hover:border-accent-client/40'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <svg className="w-5 h-5 text-accent-client" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
-              </svg>
-              <span className="font-semibold text-text-primary">Fiat (Stripe)</span>
-            </div>
-            <p className="text-xs text-text-secondary">Credit card and bank transfer payments via Stripe</p>
-          </button>
-          <button
-            onClick={() => handlePaymentModeChange('crypto')}
-            disabled={savingMode}
-            className={`flex-1 rounded-lg border-2 p-4 text-left transition-all ${
-              paymentMode === 'crypto'
-                ? 'border-accent-agent bg-accent-agent/5'
-                : 'border-border hover:border-accent-agent/40'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <svg className="w-5 h-5 text-accent-agent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.893 13.393l-1.135-1.135a2.252 2.252 0 01-.421-.585l-1.08-2.16a.414.414 0 00-.663-.107.827.827 0 01-.812.21l-1.273-.363a.89.89 0 00-.738 1.595l.587.39c.59.395.674 1.23.172 1.732l-.2.2c-.212.212-.33.498-.33.796v.41c0 .409-.11.809-.32 1.158l-1.315 2.191a2.11 2.11 0 01-1.81 1.025 1.055 1.055 0 01-1.055-1.055v-1.172c0-.92-.56-1.747-1.414-2.089l-.655-.261a2.25 2.25 0 01-1.383-2.46l.007-.042a2.25 2.25 0 01.29-.787l.09-.15a2.25 2.25 0 012.37-1.048l1.178.236a1.125 1.125 0 001.302-.795l.208-.73a1.125 1.125 0 00-.578-1.315l-.665-.332-.091.091a2.25 2.25 0 01-1.591.659h-.18c-.249 0-.487.1-.662.274a.931.931 0 01-1.458-1.137l1.411-2.353a2.25 2.25 0 00.286-.76M11.25 2.25L12 2.25" />
-              </svg>
-              <span className="font-semibold text-text-primary">Crypto (USDC)</span>
-            </div>
-            <p className="text-xs text-text-secondary">USDC payments on Base via multisig wallet</p>
-          </button>
-        </div>
-        {paymentMode === 'crypto' && !squad.multisigAddress && (
-          <p className="text-xs text-warning mt-2">
-            You need to configure a multisig wallet address to receive crypto payments.
+            to receive USDC payments on Base.
           </p>
         )}
       </div>
@@ -231,11 +202,72 @@ export default function FinancialDashboardPage() {
           <p className="text-xs text-text-secondary mt-1">{activeContracts.length} active contracts</p>
         </div>
         <div className="bg-white rounded-xl border border-border p-6">
-          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">Payment Mode</p>
-          <p className="text-2xl font-bold text-text-primary capitalize">{paymentMode}</p>
-          <p className="text-xs text-text-secondary mt-1">{paymentMode === 'crypto' ? 'USDC on Base' : 'Via Stripe'}</p>
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">Payment Method</p>
+          <p className="text-2xl font-bold text-accent-agent">USDC</p>
+          <p className="text-xs text-text-secondary mt-1">On Base via escrow contract</p>
         </div>
       </div>
+
+      {/* Treasury Split Configuration */}
+      <section className="bg-white rounded-xl border border-border p-6 mb-4">
+        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">
+          Treasury Split Configuration
+        </h2>
+        <p className="text-sm text-text-secondary mb-4">
+          Configure how contract payments flow between the squad treasury (multisig) and individual members.
+        </p>
+
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-text-primary">% to Squad Treasury (Multisig)</label>
+            <span className="text-sm font-bold text-accent-agent">{treasuryPct}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={80}
+            step={5}
+            value={treasuryPct}
+            onChange={(e) => setTreasuryPct(Number(e.target.value))}
+            className="w-full h-2 bg-bg-secondary rounded-lg appearance-none cursor-pointer accent-accent-agent"
+          />
+          <div className="flex justify-between text-xs text-text-secondary mt-1">
+            <span>0% (all to members)</span>
+            <span>80% max</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-sm font-medium text-text-primary">% Distributed to Members</span>
+          <span className="text-sm font-bold text-accent-squad">{memberDistribution}%</span>
+        </div>
+
+        {/* Example calculation */}
+        <div className="bg-bg-primary rounded-lg p-4 mb-4">
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
+            Example: $10,000 Contract
+          </p>
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex-1">
+              <p className="text-text-secondary">Treasury (multisig)</p>
+              <p className="font-bold text-accent-agent">{formatCurrency(10000 * (treasuryPct / 100))}</p>
+            </div>
+            <div className="text-text-secondary">+</div>
+            <div className="flex-1">
+              <p className="text-text-secondary">Split among members</p>
+              <p className="font-bold text-accent-squad">{formatCurrency(10000 * (memberDistribution / 100))}</p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSaveTreasurySplit}
+          disabled={savingSplit}
+          className="px-4 py-2 bg-accent-agent text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+        >
+          {savingSplit ? 'Saving...' : 'Save Treasury Split'}
+        </button>
+      </section>
 
       {/* Revenue Split */}
       <section className="bg-white rounded-xl border border-border p-6 mb-4">
@@ -282,6 +314,9 @@ export default function FinancialDashboardPage() {
                 );
               })}
             </div>
+            <p className="text-xs text-text-secondary mt-3">
+              All distributions are in USDC on Base, released per deliverable approval.
+            </p>
           </div>
         )}
       </section>
@@ -296,7 +331,7 @@ export default function FinancialDashboardPage() {
             <thead>
               <tr className="border-b border-border">
                 <th className="text-left py-2 pr-4 font-medium text-text-secondary">Contract</th>
-                <th className="text-right py-2 px-4 font-medium text-text-secondary">Amount</th>
+                <th className="text-right py-2 px-4 font-medium text-text-secondary">Amount (USDC)</th>
                 <th className="text-left py-2 px-4 font-medium text-text-secondary">Status</th>
                 <th className="text-right py-2 pl-4 font-medium text-text-secondary">Date</th>
               </tr>

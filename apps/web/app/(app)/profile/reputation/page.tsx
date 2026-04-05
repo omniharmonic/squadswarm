@@ -3,24 +3,15 @@
 import { useState, useEffect } from 'react';
 import { AttestationBadge } from '@/components/attestation-badge';
 
-// Mock attestation data — replace with real API calls once EAS integration is live
-const MOCK_ATTESTATIONS = [
-  {
-    uid: '0xabc123def456789012345678901234567890123456789012345678901234abcd',
-    schemaName: 'Contract Completion',
-    timestamp: Math.floor(Date.now() / 1000) - 86400 * 30,
-  },
-  {
-    uid: '0xdef456789012345678901234567890123456789012345678901234567890abcd',
-    schemaName: 'Client Satisfaction',
-    timestamp: Math.floor(Date.now() / 1000) - 86400 * 14,
-  },
-  {
-    uid: '0x789012345678901234567890123456789012345678901234567890123456abcd',
-    schemaName: 'Skill Verification',
-    timestamp: Math.floor(Date.now() / 1000) - 86400 * 7,
-  },
-];
+interface Attestation {
+  id: string;
+  type: string;
+  easUid: string | null;
+  schemaUid: string | null;
+  onChain: boolean;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
 
 interface TrustScoreData {
   trustScore: number;
@@ -30,19 +21,32 @@ interface TrustScoreData {
     squads: number;
     squadContracts: number;
     clientContracts: number;
+    attestations: number;
+    [key: string]: number;
   };
   details: {
     hasBio: boolean;
-    squadMemberships: number;
-    completedAsSquadMember: number;
-    completedAsClient: number;
+    squadMemberships?: number;
+    completedAsSquadMember?: number;
+    completedAsClient?: number;
+    attestationCount?: number;
+    attestationsByType?: Record<string, number>;
+    [key: string]: unknown;
   };
 }
+
+const ATTESTATION_TYPE_LABELS: Record<string, string> = {
+  contract_completion: 'Contract Completion',
+  client_satisfaction: 'Client Satisfaction',
+  agent_capability: 'Agent Capability',
+  skill_verification: 'Skill Verification',
+};
 
 export default function TrustReputationPage() {
   const [data, setData] = useState<TrustScoreData | null>(null);
   const [loading, setLoading] = useState(true);
   const [web3Enabled, setWeb3Enabled] = useState(false);
+  const [attestations, setAttestations] = useState<Attestation[]>([]);
 
   // Check if wallet is connected (web3 enabled)
   useEffect(() => {
@@ -61,6 +65,15 @@ export default function TrustReputationPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    fetch('/api/users/me/attestations')
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setAttestations(data);
+      })
+      .catch(() => {});
+  }, []);
+
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -77,9 +90,10 @@ export default function TrustReputationPage() {
     ? [
         { label: 'Base score', value: data.breakdown.base, description: 'Every member starts here' },
         { label: 'Bio completed', value: data.breakdown.bio, description: data.details.hasBio ? 'Bio is set' : 'Add a bio to earn +10' },
-        { label: 'Squad memberships', value: data.breakdown.squads, description: `${data.details.squadMemberships} squad(s), +5 each (max +20)` },
-        { label: 'Contracts as squad member', value: data.breakdown.squadContracts, description: `${data.details.completedAsSquadMember} completed, +10 each` },
-        { label: 'Contracts as client', value: data.breakdown.clientContracts, description: `${data.details.completedAsClient} completed, +5 each` },
+        { label: 'Squad memberships', value: data.breakdown.squads ?? 0, description: `${data.details.squadMemberships ?? 0} squad(s), +5 each (max +20)` },
+        { label: 'Contracts as squad member', value: data.breakdown.squadContracts ?? 0, description: `${data.details.completedAsSquadMember ?? 0} completed, +10 each` },
+        { label: 'Contracts as client', value: data.breakdown.clientContracts ?? 0, description: `${data.details.completedAsClient ?? 0} completed, +5 each` },
+        { label: 'Attestations', value: data.breakdown.attestations ?? 0, description: `${data.details.attestationCount ?? 0} attestation(s), weighted by type (max +30)` },
       ]
     : [];
 
@@ -180,6 +194,7 @@ export default function TrustReputationPage() {
             <li>Each squad membership adds <span className="font-medium text-text-primary">+5</span> (up to +20)</li>
             <li>Each completed contract as a squad member adds <span className="font-medium text-text-primary">+10</span></li>
             <li>Each completed contract as a client adds <span className="font-medium text-text-primary">+5</span></li>
+            <li>On-chain attestations add up to <span className="font-medium text-text-primary">+30</span>, weighted by type</li>
             <li>The maximum score is <span className="font-medium text-text-primary">100</span></li>
           </ul>
           <p>
@@ -194,15 +209,15 @@ export default function TrustReputationPage() {
           <h2 className="font-semibold text-text-primary mb-4">Activity Summary</h2>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center p-3 bg-bg-primary rounded-lg border border-border">
-              <p className="text-2xl font-bold text-text-primary">{data.details.squadMemberships}</p>
+              <p className="text-2xl font-bold text-text-primary">{data.details.squadMemberships ?? 0}</p>
               <p className="text-xs text-text-secondary mt-0.5">Squads Joined</p>
             </div>
             <div className="text-center p-3 bg-bg-primary rounded-lg border border-border">
-              <p className="text-2xl font-bold text-text-primary">{data.details.completedAsSquadMember}</p>
+              <p className="text-2xl font-bold text-text-primary">{data.details.completedAsSquadMember ?? 0}</p>
               <p className="text-xs text-text-secondary mt-0.5">Contracts (Squad)</p>
             </div>
             <div className="text-center p-3 bg-bg-primary rounded-lg border border-border">
-              <p className="text-2xl font-bold text-text-primary">{data.details.completedAsClient}</p>
+              <p className="text-2xl font-bold text-text-primary">{data.details.completedAsClient ?? 0}</p>
               <p className="text-xs text-text-secondary mt-0.5">Contracts (Client)</p>
             </div>
           </div>
@@ -217,26 +232,50 @@ export default function TrustReputationPage() {
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </svg>
           <h2 className="font-semibold text-text-primary">On-Chain Attestations</h2>
+          {attestations.length > 0 && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-success/10 text-success">
+              {attestations.length}
+            </span>
+          )}
         </div>
 
-        {web3Enabled ? (
+        {attestations.length > 0 ? (
           <div className="space-y-3">
             <p className="text-sm text-text-secondary mb-4">
-              Your verified on-chain attestations via Ethereum Attestation Service (EAS) on Base.
+              Your verified attestations via Ethereum Attestation Service (EAS) on Base.
             </p>
             <div className="flex flex-wrap gap-2">
-              {MOCK_ATTESTATIONS.map((att) => (
-                <AttestationBadge
-                  key={att.uid}
-                  uid={att.uid}
-                  schemaName={att.schemaName}
-                  timestamp={att.timestamp}
-                  size="md"
-                />
+              {attestations.map((att) => (
+                att.onChain && att.easUid ? (
+                  <AttestationBadge
+                    key={att.id}
+                    uid={att.easUid}
+                    schemaName={ATTESTATION_TYPE_LABELS[att.type] ?? att.type}
+                    timestamp={Math.floor(new Date(att.createdAt).getTime() / 1000)}
+                    size="md"
+                  />
+                ) : (
+                  <span
+                    key={att.id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border bg-bg-secondary text-text-secondary"
+                    title="Off-chain attestation"
+                  >
+                    {ATTESTATION_TYPE_LABELS[att.type] ?? att.type}
+                    <span className="text-text-secondary/60">
+                      {new Date(att.createdAt).toLocaleDateString()}
+                    </span>
+                  </span>
+                )
               ))}
             </div>
             <p className="text-xs text-text-secondary mt-3">
               Attestations are created automatically when contracts are completed and verified on-chain.
+            </p>
+          </div>
+        ) : web3Enabled ? (
+          <div className="text-center py-6">
+            <p className="text-sm text-text-secondary">
+              No attestations yet. Complete contracts to earn on-chain reputation.
             </p>
           </div>
         ) : (

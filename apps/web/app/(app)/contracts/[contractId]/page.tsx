@@ -481,7 +481,6 @@ export default function ContractOverviewPage() {
   const escrowedAmount = totalAmount * 0.75;
   const releasedSoFar = totalCount > 0 ? escrowedAmount * (approvedCount / totalCount) : 0;
   const paymentProgressPercent = totalAmount > 0 ? Math.round(((upfrontAmount + releasedSoFar) / totalAmount) * 100) : 0;
-  const isCrypto = true; // All payments are crypto-native (USDC on Base)
   const escrowAddress = contract.smartContractAddress;
 
   const daysActive = contract.startedAt
