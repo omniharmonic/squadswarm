@@ -98,6 +98,33 @@ export async function POST(
 
     const governance = squad.governanceModel as GovernanceModel;
 
+    // Count total squad members
+    const allMembers = await db
+      .select({ userId: squadMembers.userId, role: squadMembers.role })
+      .from(squadMembers)
+      .where(eq(squadMembers.squadId, bid.squadId));
+
+    const otherMembers = allMembers.filter(m => m.userId !== session.userId);
+    const isSoloSquad = allMembers.length <= 1;
+    const isAdminDelegated = governance.type === 'delegated' && isAdmin;
+
+    // Solo squads or delegated-admin: auto-ratify (no vote needed)
+    if (isSoloSquad || isAdminDelegated) {
+      const [updated] = await db
+        .update(bids)
+        .set({
+          status: 'ratified',
+          governanceStatus: 'ratified',
+          ratifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(bids.id, bidId))
+        .returning();
+
+      console.log(`[Activity] bid_auto_ratified: bid=${bidId} (${isSoloSquad ? 'solo squad' : 'delegated admin'})`);
+      return NextResponse.json({ ...updated, autoRatified: true });
+    }
+
     // Set governance deadline based on model type
     let governanceDeadline: Date | null = null;
     const now = new Date();
@@ -129,15 +156,7 @@ export async function POST(
       .returning();
 
     // Notify all squad members except the submitter
-    const members = await db
-      .select({ userId: squadMembers.userId })
-      .from(squadMembers)
-      .where(
-        and(
-          eq(squadMembers.squadId, bid.squadId),
-          ne(squadMembers.userId, session.userId)
-        )
-      );
+    const members = otherMembers;
 
     // Get submitter display name for notification
     const [submitter] = await db

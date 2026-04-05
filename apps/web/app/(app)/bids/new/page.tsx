@@ -16,8 +16,11 @@ interface Squad {
 interface SquadMember {
   id: string;
   userId: string;
-  displayName: string;
-  email: string;
+  displayName?: string;
+  email?: string;
+  // API returns userName/userEmail — normalize on fetch
+  userName?: string;
+  userEmail?: string;
   role: string;
 }
 interface Agent {
@@ -117,7 +120,16 @@ function BidBuilderContent() {
     if (!selectedSquadId) return;
     fetch(`/api/squads/${selectedSquadId}/members`)
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setMembers(d); })
+      .then(d => {
+        if (Array.isArray(d)) {
+          // Normalize API field names (userName/userEmail → displayName/email)
+          setMembers(d.map((m: SquadMember) => ({
+            ...m,
+            displayName: m.displayName || m.userName || m.userEmail?.split('@')[0] || 'Unknown',
+            email: m.email || m.userEmail || '',
+          })));
+        }
+      })
       .catch(() => setMembers([]));
     fetch(`/api/squads/${selectedSquadId}/agents`)
       .then(r => r.json())
@@ -236,7 +248,17 @@ function BidBuilderContent() {
     try {
       const res = await fetch(`/api/bids/${currentBidId}/submit-for-review`, { method: 'POST' });
       if (res.ok) {
-        toast.success('Bid submitted for squad review!');
+        const data = await res.json();
+        if (data.autoRatified) {
+          // Solo squad or delegated admin — auto-ratified, go to submit directly
+          toast.success('Bid auto-ratified (solo squad). Submitting to client...');
+          const submitRes = await fetch(`/api/bids/${currentBidId}/submit`, { method: 'POST' });
+          if (submitRes.ok) {
+            toast.success('Bid submitted to client!');
+          }
+        } else {
+          toast.success('Bid submitted for squad review!');
+        }
         router.push(`/scopes/${scopeId}`);
       } else {
         const d = await res.json();
@@ -392,7 +414,7 @@ function BidBuilderContent() {
                             const val = e.target.value;
                             if (!val) { assignTo(a.deliverableKey, 'user', '', ''); return; }
                             const member = members.find(m => m.userId === val);
-                            if (member) { assignTo(a.deliverableKey, 'user', val, member.displayName || member.email); return; }
+                            if (member) { assignTo(a.deliverableKey, 'user', val, member.displayName || member.email || 'Member'); return; }
                             const agent = agents.find(ag => ag.id === val);
                             if (agent) { assignTo(a.deliverableKey, 'agent', val, agent.name); }
                           }}
@@ -400,7 +422,7 @@ function BidBuilderContent() {
                         >
                           <option value="">Unassigned</option>
                           <optgroup label="Members">
-                            {members.map(m => <option key={m.userId} value={m.userId}>{m.displayName || m.email}</option>)}
+                            {members.map(m => <option key={m.userId} value={m.userId}>{m.displayName || m.email || 'Member'}</option>)}
                           </optgroup>
                           {agents.length > 0 && (
                             <optgroup label="AI Agents">
@@ -598,7 +620,7 @@ function BidBuilderContent() {
                     disabled={!approach || !proposedPrice || totalBps !== 10000 || saving}
                     className="px-6 py-2.5 bg-accent-squad text-white rounded-xl text-sm font-medium hover:bg-accent-squad-hover disabled:opacity-50"
                   >
-                    Submit for Squad Vote
+                    {members.length <= 1 ? 'Submit Bid' : 'Submit for Squad Vote'}
                   </button>
                 </div>
               </div>
