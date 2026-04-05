@@ -365,6 +365,27 @@ function BidBuilderContent() {
                   <div><div className="text-xs text-text-secondary">Deliverables</div><div className="font-medium">{allDeliverables.length}</div></div>
                 </div>
               </div>
+
+              {/* No work plan warning */}
+              {allDeliverables.length === 0 && (
+                <div className="bg-warning/5 border border-warning/20 rounded-xl p-6">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                    <div>
+                      <h3 className="text-sm font-semibold text-warning">This scope has no work plan yet</h3>
+                      <p className="text-sm text-text-secondary mt-1">
+                        The scope needs to be analyzed by the AI Scope Analyst before you can bid.
+                        The work plan defines the deliverables you&apos;ll assign to your team and set payment splits for.
+                      </p>
+                      <p className="text-sm text-text-secondary mt-2">
+                        Ask the scope client to run the AI analysis, or you can still submit a simplified bid
+                        by skipping to <button onClick={() => setStep('approach')} className="text-accent-agent underline">Approach & Terms</button> (no team assignment or payment splits).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {scopeInfo.workPlan?.workstreams?.map((ws, i) => (
                 <div key={i} className="bg-white rounded-xl border border-border p-6">
                   <h3 className="font-semibold mb-3">{ws.title}</h3>
@@ -384,8 +405,8 @@ function BidBuilderContent() {
                 </div>
               ))}
               <div className="flex justify-end">
-                <button onClick={() => setStep('team')} className="px-6 py-2.5 bg-accent-squad text-white rounded-xl text-sm font-medium hover:bg-accent-squad-hover">
-                  Next: Assign Team
+                <button onClick={() => allDeliverables.length > 0 ? setStep('team') : setStep('approach')} className="px-6 py-2.5 bg-accent-squad text-white rounded-xl text-sm font-medium hover:bg-accent-squad-hover">
+                  {allDeliverables.length > 0 ? 'Next: Assign Team' : 'Next: Approach & Terms'}
                 </button>
               </div>
             </div>
@@ -617,11 +638,21 @@ function BidBuilderContent() {
                   </button>
                   <button
                     onClick={handleSubmitForReview}
-                    disabled={!approach || !proposedPrice || totalBps !== 10000 || saving}
+                    disabled={!approach || !proposedPrice || (allDeliverables.length > 0 && totalBps !== 10000) || saving}
                     className="px-6 py-2.5 bg-accent-squad text-white rounded-xl text-sm font-medium hover:bg-accent-squad-hover disabled:opacity-50"
                   >
                     {members.length <= 1 ? 'Submit Bid' : 'Submit for Squad Vote'}
                   </button>
+                  {/* Validation hints */}
+                  {(!approach || !proposedPrice || (allDeliverables.length > 0 && totalBps !== 10000)) && (
+                    <div className="text-xs text-text-muted mt-2 text-right space-y-0.5">
+                      {!approach && <div className="text-warning">Missing: approach description</div>}
+                      {!proposedPrice && <div className="text-warning">Missing: proposed price</div>}
+                      {allDeliverables.length > 0 && totalBps !== 10000 && (
+                        <div className="text-warning">Payment split must equal 100% (currently {(totalBps / 100).toFixed(0)}%)</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

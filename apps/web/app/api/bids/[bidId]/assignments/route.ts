@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
-import { db, bids, bidAssignments, squadMembers, users, agents } from '@squadswarm/db';
+import { db, bids, bidAssignments, scopes, squadMembers, users, agents } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 
 export async function GET(
@@ -64,8 +64,39 @@ export async function GET(
       .leftJoin(agents, eq(bidAssignments.agentId, agents.id))
       .where(eq(bidAssignments.bidId, bidId));
 
+    // Resolve deliverable titles from the scope work plan
+    const [scope] = await db
+      .select({ workPlan: scopes.workPlan })
+      .from(scopes)
+      .where(eq(scopes.id, bid.scopeId))
+      .limit(1);
+
+    // Build flat deliverable list from work plan
+    const workPlan = scope?.workPlan as { workstreams?: { title: string; deliverables?: { title: string }[] }[] } | null;
+    const flatDeliverables: { title: string; workstream: string }[] = [];
+    if (workPlan?.workstreams) {
+      for (const ws of workPlan.workstreams) {
+        for (const del of ws.deliverables || []) {
+          flatDeliverables.push({ title: del.title, workstream: ws.title });
+        }
+      }
+    }
+
+    // Enrich assignments with titles and assignee names
+    const enriched = assignments.map(a => {
+      const delIndex = parseInt(a.deliverableKey, 10);
+      const del = flatDeliverables[delIndex];
+      return {
+        ...a,
+        deliverableTitle: del?.title || `Deliverable ${a.deliverableKey}`,
+        workstreamTitle: del?.workstream || '',
+        assigneeName: a.agentName || a.userDisplayName || a.userEmail?.split('@')[0] || 'Unassigned',
+        isAgent: !!a.agentId,
+      };
+    });
+
     return NextResponse.json({
-      assignments,
+      assignments: enriched,
       treasuryShareBps: bid.treasuryShareBps,
       totalAssignedBps: assignments.reduce((sum, a) => sum + a.paymentShareBps, 0),
     });

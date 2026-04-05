@@ -60,18 +60,11 @@ export async function POST(
       );
     }
 
-    // Validate: bid has at least one assignment
+    // Check for assignments (optional for scopes without work plans)
     const assignments = await db
       .select()
       .from(bidAssignments)
       .where(eq(bidAssignments.bidId, bidId));
-
-    if (assignments.length === 0) {
-      return NextResponse.json(
-        { error: 'Bid must have at least one assignment before submitting for review' },
-        { status: 400 }
-      );
-    }
 
     // Validate: bid has approach and proposedPrice
     if (!bid.approach) {

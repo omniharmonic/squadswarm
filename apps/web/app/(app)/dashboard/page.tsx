@@ -29,6 +29,15 @@ interface ActivityItem {
   isAgent: boolean;
 }
 
+interface PendingVote {
+  bidId: string;
+  scopeTitle: string;
+  squadName: string;
+  proposedPrice: string | null;
+  governanceDeadline: string | null;
+  voteUrl: string;
+}
+
 const actionLabelMap: Record<string, string> = {
   deliverable_approved: 'Deliverable approved',
   deliverable_status_changed: 'Status updated',
@@ -102,8 +111,14 @@ export default function DashboardPage() {
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(true);
   const [trustScore, setTrustScore] = useState<string>('-');
+  const [pendingVotes, setPendingVotes] = useState<PendingVote[]>([]);
 
   useEffect(() => {
+    fetch('/api/bids/pending-votes')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setPendingVotes(d); })
+      .catch(() => {});
+
     fetch('/api/squads')
       .then((res) => { if (!res.ok) throw new Error('Failed'); return res.json(); })
       .then((data: Squad[]) => setSquads(data))
@@ -292,6 +307,37 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Pending Votes */}
+      {pendingVotes.length > 0 && (
+        <div className="bg-accent-squad/5 border border-accent-squad/20 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <svg className="w-5 h-5 text-accent-squad" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+            <h2 className="text-lg font-semibold">Votes Needed</h2>
+            <span className="bg-accent-squad text-white text-xs font-bold px-2 py-0.5 rounded-full">{pendingVotes.length}</span>
+          </div>
+          <div className="space-y-3">
+            {pendingVotes.map(v => (
+              <Link key={v.bidId} href={v.voteUrl} className="flex items-center justify-between p-3 bg-white rounded-lg border border-border hover:border-accent-squad/40 transition-colors">
+                <div>
+                  <div className="text-sm font-medium">{v.scopeTitle}</div>
+                  <div className="text-xs text-text-secondary">
+                    {v.squadName} {v.proposedPrice ? `• $${Number(v.proposedPrice).toLocaleString()}` : ''}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {v.governanceDeadline && (
+                    <span className="text-xs text-text-muted">
+                      {Math.max(0, Math.round((new Date(v.governanceDeadline).getTime() - Date.now()) / (1000 * 60 * 60)))}h left
+                    </span>
+                  )}
+                  <span className="text-xs font-medium text-accent-squad">Vote Now</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Your Squads (real data) */}
       {!loadingSquads && squads.length > 0 && (
