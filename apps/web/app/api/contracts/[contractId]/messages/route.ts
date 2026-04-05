@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc, asc, sql } from 'drizzle-orm';
-import { db, contracts, messages, squadMembers, users } from '@squadswarm/db';
+import { db, contracts, messages, squadMembers, users, agents } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { getAgentSession } from '@/lib/agent-auth';
 
 export async function GET(
   req: NextRequest,
@@ -108,10 +109,20 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ contractId: string }> }
 ) {
+  // Support both human session auth and agent token auth
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const agentSession = !session ? await getAgentSession(req) : null;
+
+  if (!session && !agentSession) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const { contractId } = await params;
+
+  // Agent tokens are scoped to a specific contract
+  if (agentSession && agentSession.contractId !== contractId) {
+    return NextResponse.json({ error: 'Agent token not valid for this contract' }, { status: 403 });
+  }
 
   const [contract] = await db
     .select()
@@ -121,21 +132,23 @@ export async function POST(
 
   if (!contract) return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
 
-  // Auth: user must be contract participant
-  const isClient = contract.clientId === session.userId;
-  if (!isClient) {
-    const [membership] = await db
-      .select()
-      .from(squadMembers)
-      .where(
-        and(
-          eq(squadMembers.squadId, contract.squadId),
-          eq(squadMembers.userId, session.userId)
+  // Auth: human must be contract participant
+  if (session) {
+    const isClient = contract.clientId === session.userId;
+    if (!isClient) {
+      const [membership] = await db
+        .select()
+        .from(squadMembers)
+        .where(
+          and(
+            eq(squadMembers.squadId, contract.squadId),
+            eq(squadMembers.userId, session.userId)
+          )
         )
-      )
-      .limit(1);
-    if (!membership) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        .limit(1);
+      if (!membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
   }
 
@@ -156,22 +169,37 @@ export async function POST(
       contractId,
       channelType,
       channelId: channelId || null,
-      authorUserId: session.userId,
+      authorUserId: session?.userId || null,
+      authorAgentId: agentSession?.agentId || null,
       content: content.trim(),
       mentions: mentions || [],
     })
     .returning();
 
   // Resolve author name for response
-  const [user] = await db
-    .select({ displayName: users.displayName, email: users.email })
-    .from(users)
-    .where(eq(users.id, session.userId))
-    .limit(1);
+  let authorName = 'Unknown';
+  let isAgent = false;
+
+  if (session) {
+    const [user] = await db
+      .select({ displayName: users.displayName, email: users.email })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+    authorName = user?.displayName || user?.email || 'Unknown';
+  } else if (agentSession) {
+    const [agent] = await db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(eq(agents.id, agentSession.agentId))
+      .limit(1);
+    authorName = agent?.name || 'Unknown Agent';
+    isAgent = true;
+  }
 
   return NextResponse.json({
     ...message,
-    author: user?.displayName || user?.email || 'Unknown',
-    isAgent: false,
+    author: authorName,
+    isAgent,
   }, { status: 201 });
 }

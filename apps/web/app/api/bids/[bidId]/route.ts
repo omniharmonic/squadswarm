@@ -63,6 +63,7 @@ export async function PATCH(
     if (body.paymentSchedule !== undefined) allowedFields.paymentSchedule = body.paymentSchedule;
     if (body.trackRecord !== undefined) allowedFields.trackRecord = body.trackRecord;
     if (body.status !== undefined) allowedFields.status = body.status;
+    if (body.treasuryShareBps !== undefined) allowedFields.treasuryShareBps = body.treasuryShareBps;
 
     if (Object.keys(allowedFields).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });

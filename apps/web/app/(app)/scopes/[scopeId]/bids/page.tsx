@@ -15,6 +15,8 @@ interface Bid {
   proposedPrice: string | null;
   paymentSchedule: { upfrontPercentage?: number; finalPercentage?: number } | null;
   proposedTimeline: { notes?: string } | null;
+  treasuryShareBps: number | null;
+  ratifiedAt: string | null;
   status: string;
   createdAt: string;
 }
@@ -30,9 +32,13 @@ function formatPrice(price: string | null) {
 
 const statusStyles: Record<string, string> = {
   draft: 'bg-bg-secondary text-text-secondary',
-  submitted: 'bg-accent-agent/10 text-accent-agent',
+  under_review: 'bg-warning/10 text-warning',
+  ratified: 'bg-accent-agent/10 text-accent-agent',
+  submitted: 'bg-accent-squad/10 text-accent-squad',
   accepted: 'bg-success/10 text-success',
   rejected: 'bg-error/10 text-error',
+  shortlisted: 'bg-accent-client/10 text-accent-client',
+  withdrawn: 'bg-bg-secondary text-text-muted',
 };
 
 export default function BidsReviewPage() {

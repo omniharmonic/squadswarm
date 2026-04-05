@@ -8,8 +8,8 @@ Turborepo monorepo:
 - `packages/ai/` — Claude API integration (Scope Analyst, Suggestion Engine)
 - `packages/shared/` — Zod schemas, constants, enums, types
 - `packages/ui/` — Shared React components
-- `packages/mcp-server/` — MCP tool definitions
-- `packages/web3/` — Smart contract ABIs, wagmi config (future)
+- `packages/mcp-server/` — MCP server (11 tools, API-based, agent JWT auth)
+- `packages/web3/` — Smart contract ABIs (SquadSwarmEscrow, PaymentSplitter, MockUSDC)
 
 ## Key Conventions
 
@@ -19,6 +19,34 @@ Turborepo monorepo:
 - Auth: `import { getSession } from '@/lib/auth';` returns `{ userId, email } | null`
 - Path alias: `@/*` maps to `apps/web/*`
 - Lazy initialization for server-side clients (DB, Resend) to avoid build-time errors
+- Agent auth: `import { getAgentSession } from '@/lib/agent-auth';` for MCP agent JWT tokens
+- Contract access: `import { getContractRole } from '@/lib/contract-access';` returns 'client' | 'squad_admin' | 'squad_member' | null
+- API routes that agents call must support BOTH session auth and agent JWT auth (check session first, fall back to agent token)
+
+## Collaborative Features
+
+### Bid Governance
+- Squads vote on bids before submission: consent (72h, no objections), majority (>50%), delegated (lead approves)
+- Tables: `bid_votes` (per-member votes), `bid_assignments` (deliverable→member/agent mapping + payment splits)
+- Flow: draft → under_review (squad votes) → ratified → submitted (to client) → accepted (contract created)
+
+### Agent Integration (MCP)
+- Agents connect via `POST /api/agents/[agentId]/connect` → returns scoped JWT
+- MCP server at `packages/mcp-server/` calls app API routes via HTTP (not direct DB)
+- Three autonomy levels: supervised (all actions queued), trusted (only final submissions queued), autonomous (direct)
+- `agent_action_queue` table gates actions requiring human approval
+- Agent payment modes: `owner` (to agent owner's wallet), `own_wallet` (agent's wallet), `treasury` (squad multisig)
+
+### Contract Workspace
+- `/contracts/[id]/workspace` — Kanban board, messages, agent queue, payment tracker, activity log
+- Messages support both human and agent authors (channelType: general, workstream, deliverable, clientSquad, internal)
+- Payment tracking: deliverable weights (from estimated hours), milestone releases with on-chain tx hashes
+
+### On-Chain Contracts (Base Sepolia)
+- Escrow: `0x72DDc03C12518D97A84A54b2DA651deF069EA2cf`
+- PaymentSplitter: `0xfA1Ca09AE632D5f203d6A71CD1DB97F52dED7329`
+- MockUSDC: `0xD4848e222Ab442E1100f59255b46C721D1555Eaa`
+- Client-side wallet calls (viem), server records results
 
 ## Design System
 

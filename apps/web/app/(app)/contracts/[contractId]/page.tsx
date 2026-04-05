@@ -179,6 +179,11 @@ export default function ContractOverviewPage() {
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [addingLink, setAddingLink] = useState(false);
 
+  // Milestone release state
+  const [releasingDeliverable, setReleasingDeliverable] = useState<string | null>(null);
+  const [releaseError, setReleaseError] = useState('');
+  const [releasedMilestones, setReleasedMilestones] = useState<Record<string, string>>({}); // deliverableId -> txHash
+
   // Rating state
   const [existingRating, setExistingRating] = useState<Rating | null>(null);
   const [ratingOverall, setRatingOverall] = useState(0);
@@ -332,12 +337,32 @@ export default function ContractOverviewPage() {
     }
   }
 
+  const fetchPaymentMilestones = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/payment-status`);
+      if (res.ok) {
+        const data = await res.json();
+        const released: Record<string, string> = {};
+        const delivs = data.milestones?.deliverables || [];
+        for (const d of delivs) {
+          if (d.releaseTxHash) {
+            released[d.id] = d.releaseTxHash;
+          }
+        }
+        setReleasedMilestones(released);
+      }
+    } catch {
+      // ignore
+    }
+  }, [contractId]);
+
   useEffect(() => {
     fetchContract();
     fetchRating();
     fetchCollabLinks();
+    fetchPaymentMilestones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractId, fetchRating, fetchCollabLinks]);
+  }, [contractId, fetchRating, fetchCollabLinks, fetchPaymentMilestones]);
 
   async function handleFundContract() {
     if (!walletClient || !address) {
@@ -573,6 +598,16 @@ export default function ContractOverviewPage() {
           functionName: 'complete',
           args: [contractIdHex],
         });
+
+        // Wait for tx confirmation
+        setCompleteError('Waiting for on-chain confirmation...');
+        const { createPublicClient: cpcComplete, http: httpComplete } = await import('viem');
+        const pcComplete = cpcComplete({
+          chain: activeWallet.chain!,
+          transport: httpComplete(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org'),
+        });
+        await pcComplete.waitForTransactionReceipt({ hash: completeTx });
+
         setCompleteError('');
         toast.success('Funds released on-chain!');
       }
@@ -590,6 +625,85 @@ export default function ContractOverviewPage() {
       setCompleteError(err instanceof Error ? err.message : 'Network error');
     } finally {
       setCompleting(false);
+    }
+  }
+
+  async function handleReleaseMilestone(deliverableId: string, milestoneAmountUSD: number) {
+    if (!walletClient || !address) {
+      try {
+        const addr = await connect();
+        if (!addr) return;
+      } catch {
+        return;
+      }
+    }
+
+    setReleasingDeliverable(deliverableId);
+    setReleaseError('');
+    try {
+      const escrowAddr = (process.env.NEXT_PUBLIC_ESCROW_ADDRESS || '').trim() as Address | undefined;
+
+      if (!escrowAddr) {
+        // No escrow deployed — stub flow
+        const mockTxHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+        const res = await fetch(`/api/contracts/${contractId}/release-milestone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deliverableId, txHash: mockTxHash }),
+        });
+        if (res.ok) {
+          setReleasedMilestones(prev => ({ ...prev, [deliverableId]: mockTxHash }));
+          toast.success(`Released $${milestoneAmountUSD.toFixed(2)} USDC`);
+        } else {
+          const err = await res.json();
+          setReleaseError(err.error || 'Failed to record release');
+        }
+        return;
+      }
+
+      // REAL ON-CHAIN FLOW
+      const contractIdHex = generateContractId(contractId, 0) as Hex;
+      const releaseAmount = toUSDC(milestoneAmountUSD);
+
+      setReleaseError('Releasing milestone on-chain...');
+      const releaseTx = await walletClient!.writeContract({
+        account: address!,
+        chain: walletClient!.chain!,
+        address: escrowAddr,
+        abi: SQUAD_SWARM_ESCROW_ABI,
+        functionName: 'releaseMilestone',
+        args: [contractIdHex, releaseAmount],
+      });
+
+      // Wait for confirmation
+      setReleaseError('Waiting for confirmation...');
+      const { createPublicClient: cpc, http: httpT } = await import('viem');
+      const pc = cpc({
+        chain: walletClient!.chain!,
+        transport: httpT(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org'),
+      });
+      await pc.waitForTransactionReceipt({ hash: releaseTx });
+
+      // Record on server
+      const res = await fetch(`/api/contracts/${contractId}/release-milestone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deliverableId, txHash: releaseTx }),
+      });
+
+      if (res.ok) {
+        setReleasedMilestones(prev => ({ ...prev, [deliverableId]: releaseTx }));
+        setReleaseError('');
+        toast.success(`Released $${milestoneAmountUSD.toFixed(2)} USDC`);
+      } else {
+        const err = await res.json();
+        setReleaseError(err.error || 'Failed to record release');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Release failed';
+      setReleaseError(msg);
+    } finally {
+      setReleasingDeliverable(null);
     }
   }
 
@@ -732,6 +846,15 @@ export default function ContractOverviewPage() {
               </span>
             </div>
           </div>
+          {(contract.status === 'active' || contract.status === 'in_review') && (
+            <Link
+              href={`/contracts/${contractId}/workspace`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-accent-agent text-white rounded-xl text-sm font-medium hover:bg-accent-agent-hover transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
+              Open Workspace
+            </Link>
+          )}
         </div>
 
         {/* Progress bar */}
@@ -1353,6 +1476,11 @@ export default function ContractOverviewPage() {
                 {ws.deliverables.map((d) => {
                   const isAgent = d.assignee.includes('(Agent)');
                   const statusInfo = DELIVERABLE_STATUS_STYLES[d.status] ?? { bg: 'bg-bg-secondary', label: d.status };
+                  const isApproved = d.status === 'approved';
+                  const isReleased = !!releasedMilestones[d.id];
+                  const isReleasing = releasingDeliverable === d.id;
+                  // Calculate per-deliverable milestone amount
+                  const perDeliverableAmount = totalCount > 0 ? escrowedAmount / totalCount : 0;
 
                   return (
                     <div
@@ -1371,9 +1499,34 @@ export default function ContractOverviewPage() {
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusInfo.bg}`}>
                         {statusInfo.label}
                       </span>
+                      {/* Release Payment button for approved but not yet released deliverables */}
+                      {isApproved && !isReleased && contract.status === 'active' && (
+                        <button
+                          onClick={() => handleReleaseMilestone(d.id, perDeliverableAmount)}
+                          disabled={isReleasing}
+                          className="px-3 py-1.5 bg-accent-agent text-white rounded-lg text-xs font-medium hover:bg-accent-agent-hover disabled:opacity-50 transition-colors shrink-0"
+                        >
+                          {isReleasing ? 'Releasing...' : `Release ${formatCurrency(perDeliverableAmount)}`}
+                        </button>
+                      )}
+                      {/* Show released badge with tx link */}
+                      {isApproved && isReleased && (
+                        <a
+                          href={`https://sepolia.basescan.org/tx/${releasedMilestones[d.id]}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-success/10 text-success rounded-lg text-xs font-medium hover:bg-success/20 transition-colors shrink-0"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          Released
+                        </a>
+                      )}
                     </div>
                   );
                 })}
+                {releaseError && releasingDeliverable && ws.deliverables.some(d => d.id === releasingDeliverable) && (
+                  <p className="text-xs text-error mt-1 px-3">{releaseError}</p>
+                )}
               </div>
             </div>
           );

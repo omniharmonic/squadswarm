@@ -4,15 +4,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { db, contracts, workstreams, deliverables, squadMembers, squads, users, agents } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { getAgentSession } from '@/lib/agent-auth';
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ contractId: string }> }
 ) {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const agentSession = !session ? await getAgentSession(req) : null;
+  if (!session && !agentSession) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { contractId } = await params;
+
+  if (agentSession && agentSession.contractId !== contractId) {
+    return NextResponse.json({ error: 'Token not scoped to this contract' }, { status: 403 });
+  }
 
   const [contract] = await db
     .select()
@@ -22,21 +28,23 @@ export async function GET(
 
   if (!contract) return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
 
-  // Auth check: user must be client or squad member
-  const isClient = contract.clientId === session.userId;
-  if (!isClient) {
-    const [membership] = await db
-      .select()
-      .from(squadMembers)
-      .where(
-        and(
-          eq(squadMembers.squadId, contract.squadId),
-          eq(squadMembers.userId, session.userId)
+  // Auth check for user sessions
+  if (!agentSession) {
+    const isClient = contract.clientId === session!.userId;
+    if (!isClient) {
+      const [membership] = await db
+        .select()
+        .from(squadMembers)
+        .where(
+          and(
+            eq(squadMembers.squadId, contract.squadId),
+            eq(squadMembers.userId, session!.userId)
+          )
         )
-      )
-      .limit(1);
-    if (!membership) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        .limit(1);
+      if (!membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
   }
 

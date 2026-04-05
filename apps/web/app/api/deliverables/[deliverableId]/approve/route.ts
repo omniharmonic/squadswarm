@@ -165,5 +165,25 @@ export async function POST(
     }
   }
 
-  return NextResponse.json(updated);
+  // Calculate the milestone amount for this deliverable using weights
+  const weights = (contract.deliverableWeights || {}) as Record<string, number>;
+  const paymentSchedule = (contract.paymentSchedule || {}) as Record<string, unknown>;
+  const upfrontBps = (paymentSchedule.upfrontPercentage as number) || 0;
+  const upfrontAmount = totalAmount * (upfrontBps / 100);
+  const milestonePool = totalAmount - upfrontAmount;
+  const weightBps = weights[deliverableId] || Math.round(10000 / (totalDeliverables || 1));
+  const milestoneAmount = milestonePool * (weightBps / 10000);
+  const milestoneAmountRaw = Math.round(milestoneAmount * 1_000_000).toString(); // 6 decimals for USDC
+
+  // Check if this deliverable's milestone has already been released on-chain
+  const milestoneReleases = (paymentSchedule.milestoneReleases as Array<{ deliverableId: string; txHash: string }>) || [];
+  const existingRelease = milestoneReleases.find(r => r.deliverableId === deliverableId);
+
+  return NextResponse.json({
+    ...updated,
+    milestoneAmount: milestoneAmount.toFixed(2),
+    milestoneAmountRaw,
+    milestoneReleased: !!existingRelease,
+    milestoneReleaseTxHash: existingRelease?.txHash || null,
+  });
 }

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, numeric } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, jsonb, numeric, integer } from 'drizzle-orm/pg-core';
 import { scopes } from './scopes';
 import { squads } from './squads';
 import { users } from './users';
@@ -17,6 +17,10 @@ export const bids = pgTable('bids', {
   trackRecord: jsonb('track_record'),
   governanceStatus: text('governance_status'),
   governanceVotes: jsonb('governance_votes'),
+  treasuryShareBps: integer('treasury_share_bps').default(2000), // basis points for squad treasury
+  governanceDeadline: timestamp('governance_deadline'),
+  submittedById: uuid('submitted_by_id').references(() => users.id),
+  ratifiedAt: timestamp('ratified_at'),
   status: text('status').default('draft').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

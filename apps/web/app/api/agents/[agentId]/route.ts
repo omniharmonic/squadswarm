@@ -55,6 +55,27 @@ export async function PATCH(
     if (body.mcpEndpoint !== undefined) allowedFields.mcpEndpoint = body.mcpEndpoint;
     if (body.capabilities !== undefined) allowedFields.capabilities = body.capabilities;
     if (body.status !== undefined) allowedFields.status = body.status;
+    if (body.walletAddress !== undefined) {
+      if (body.walletAddress && !/^0x[a-fA-F0-9]{40}$/.test(body.walletAddress)) {
+        return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
+      }
+      allowedFields.walletAddress = body.walletAddress;
+    }
+    if (body.paymentMode !== undefined) {
+      if (!['owner', 'own_wallet', 'treasury'].includes(body.paymentMode)) {
+        return NextResponse.json({ error: 'paymentMode must be owner, own_wallet, or treasury' }, { status: 400 });
+      }
+      if (body.paymentMode === 'own_wallet' && !body.walletAddress && !existing.walletAddress) {
+        return NextResponse.json({ error: 'walletAddress required for own_wallet payment mode' }, { status: 400 });
+      }
+      allowedFields.paymentMode = body.paymentMode;
+    }
+    if (body.autonomyLevel !== undefined) {
+      if (!['supervised', 'trusted', 'autonomous'].includes(body.autonomyLevel)) {
+        return NextResponse.json({ error: 'autonomyLevel must be supervised, trusted, or autonomous' }, { status: 400 });
+      }
+      allowedFields.autonomyLevel = body.autonomyLevel;
+    }
 
     if (Object.keys(allowedFields).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });

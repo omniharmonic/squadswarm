@@ -5,6 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 
+interface NotificationCounts {
+  pendingVotes: number;
+  agentActions: number;
+  unread: number;
+}
+
 const navItems = [
   {
     label: 'Dashboard',
@@ -59,6 +65,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userName, setUserName] = useState('User');
+  const [counts, setCounts] = useState<NotificationCounts>({ pendingVotes: 0, agentActions: 0, unread: 0 });
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -70,6 +77,12 @@ export function Sidebar() {
           if (displayName) setUserName(displayName);
         }
       })
+      .catch(() => {});
+
+    // Fetch notification counts
+    fetch('/api/notifications/counts')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setCounts(d); })
       .catch(() => {});
   }, []);
 
@@ -107,7 +120,17 @@ export function Sidebar() {
               title={collapsed ? item.label : undefined}
             >
               <span className="shrink-0">{item.icon}</span>
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && <span className="flex-1">{item.label}</span>}
+              {!collapsed && item.href === '/contracts' && (counts.agentActions > 0) && (
+                <span className="ml-auto bg-accent-agent text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  {counts.agentActions}
+                </span>
+              )}
+              {!collapsed && item.href === '/squads' && (counts.pendingVotes > 0) && (
+                <span className="ml-auto bg-accent-squad text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  {counts.pendingVotes}
+                </span>
+              )}
             </Link>
           );
         })}

@@ -17,3 +17,6 @@ export { aiUsageLogs } from './ai-usage-logs';
 export { notifications } from './notifications';
 export { magicLinks } from './magic-links';
 export { attestations } from './attestations';
+export { bidVotes } from './bid-votes';
+export { bidAssignments } from './bid-assignments';
+export { agentActionQueue } from './agent-action-queue';

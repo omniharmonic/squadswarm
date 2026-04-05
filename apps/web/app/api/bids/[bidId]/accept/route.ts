@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, ne } from 'drizzle-orm';
-import { db, bids, scopes, contracts, workstreams, deliverables } from '@squadswarm/db';
+import { db, bids, bidAssignments, scopes, contracts, workstreams, deliverables, activityLog } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 
 interface WorkPlanDeliverable {
@@ -64,9 +64,40 @@ export async function POST(
   }
 
   try {
+    // Fetch bid assignments (team + payment split from governance-ratified bid)
+    const assignments = await db
+      .select()
+      .from(bidAssignments)
+      .where(eq(bidAssignments.bidId, bidId));
+
+    // Build assignment lookup: deliverableKey → { userId, agentId }
+    const assignmentMap = new Map<string, { userId: string | null; agentId: string | null }>();
+    for (const a of assignments) {
+      assignmentMap.set(a.deliverableKey, {
+        userId: a.userId,
+        agentId: a.agentId,
+      });
+    }
+
     // Determine the finalized work plan
     const finalizedWorkPlan: WorkPlan =
       (bid.workPlanModifications as WorkPlan) || (scope.workPlan as WorkPlan) || { workstreams: [] };
+
+    // Calculate deliverable weights from estimated effort hours
+    const allPlanDeliverables: { key: string; hours: number }[] = [];
+    const planWorkstreams = finalizedWorkPlan.workstreams || [];
+    let deliverableIndex = 0;
+    for (const ws of planWorkstreams) {
+      if (!ws) continue;
+      for (const del of ws.deliverables || []) {
+        allPlanDeliverables.push({
+          key: `${deliverableIndex}`,
+          hours: del.estimatedEffortHours || 1,
+        });
+        deliverableIndex++;
+      }
+    }
+    const totalHours = allPlanDeliverables.reduce((sum, d) => sum + d.hours, 0) || 1;
 
     // Create the contract
     const [contract] = await db
@@ -89,8 +120,9 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create contract' }, { status: 500 });
     }
 
-    // Create workstreams and deliverables from the finalized work plan
-    const planWorkstreams = finalizedWorkPlan.workstreams || [];
+    // Create workstreams and deliverables, tracking weights
+    const deliverableWeights: Record<string, number> = {};
+    let globalDelIndex = 0;
 
     for (let i = 0; i < planWorkstreams.length; i++) {
       const ws = planWorkstreams[i];
@@ -109,24 +141,36 @@ export async function POST(
         })
         .returning();
 
-      // Create deliverables for this workstream
       if (!workstream) continue;
       const wsDeliverables = ws.deliverables || [];
       for (const del of wsDeliverables) {
-        await db.insert(deliverables).values({
+        const assignment = assignmentMap.get(`${globalDelIndex}`);
+        const [created] = await db.insert(deliverables).values({
           contractId: contract.id,
           workstreamId: workstream.id,
           title: del.title,
           description: del.description,
           format: del.format,
           acceptanceCriteria: del.acceptanceCriteria,
-          assignedMemberId: del.assignedMemberId,
-          assignedAgentId: del.assignedAgentId,
+          assignedMemberId: assignment?.userId || del.assignedMemberId || null,
+          assignedAgentId: assignment?.agentId || del.assignedAgentId || null,
           estimatedEffortHours: del.estimatedEffortHours,
           dueDate: del.dueDate ? new Date(del.dueDate) : undefined,
-        });
+        }).returning();
+
+        if (created) {
+          const hours = del.estimatedEffortHours || 1;
+          deliverableWeights[created.id] = Math.round((hours / totalHours) * 10000);
+        }
+        globalDelIndex++;
       }
     }
+
+    // Store deliverable weights on the contract
+    await db
+      .update(contracts)
+      .set({ deliverableWeights })
+      .where(eq(contracts.id, contract.id));
 
     // Accept this bid
     await db
@@ -150,6 +194,21 @@ export async function POST(
       .update(scopes)
       .set({ status: 'contracted', updatedAt: new Date() })
       .where(eq(scopes.id, scope.id));
+
+    // Log activity
+    await db.insert(activityLog).values({
+      contractId: contract.id,
+      actorUserId: session.userId,
+      action: 'contract_created',
+      entityType: 'contract',
+      entityId: contract.id,
+      metadata: {
+        bidId,
+        squadId: bid.squadId,
+        totalAmount: bid.proposedPrice,
+        deliverableCount: globalDelIndex,
+      },
+    });
 
     return NextResponse.json(contract, { status: 201 });
   } catch (error) {

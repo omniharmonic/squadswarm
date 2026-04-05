@@ -21,6 +21,8 @@ export const contracts = pgTable('contracts', {
   projectContext: text('project_context'),
   disputeSplit: jsonb('dispute_split'),
   smartContractAddress: text('smart_contract_address'),
+  paymentSplitterAddress: text('payment_splitter_address'),
+  deliverableWeights: jsonb('deliverable_weights'), // { [deliverableId]: weightBps }
   status: text('status').default('pending_deposit').notNull(),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),

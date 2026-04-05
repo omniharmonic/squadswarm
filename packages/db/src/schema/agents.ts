@@ -13,6 +13,9 @@ export const agents = pgTable('agents', {
   capabilities: jsonb('capabilities'),
   capabilityScores: jsonb('capability_scores'),
   apiKeyHash: text('api_key_hash'),
+  walletAddress: text('wallet_address'), // agent's own wallet for receiving payments
+  paymentMode: text('payment_mode').default('owner'), // 'owner' | 'own_wallet' | 'treasury'
+  autonomyLevel: text('autonomy_level').default('supervised'), // 'supervised' | 'trusted' | 'autonomous'
   status: text('status').default('active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
