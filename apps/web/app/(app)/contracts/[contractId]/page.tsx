@@ -373,9 +373,59 @@ export default function ContractOverviewPage() {
 
       // REAL ON-CHAIN FLOW
       const depositAmount = toUSDC(parseFloat(contract!.totalAmount));
+      const contractIdHex = generateContractId(contractId, 0) as Hex;
 
-      // Step 1: Approve USDC spend
-      setFundingError('Step 1/2: Approving USDC spend...');
+      // Get the squad's payment address for the escrow.
+      // The squad must have a multisig/wallet address set.
+      let squadPaymentAddr: Address | null = null;
+      try {
+        const squadRes = await fetch(`/api/squads/${contract!.squadId}`);
+        if (squadRes.ok) {
+          const squadData = await squadRes.json();
+          if (squadData.multisigAddress) {
+            squadPaymentAddr = squadData.multisigAddress.trim() as Address;
+          }
+        }
+      } catch {}
+
+      if (!squadPaymentAddr) {
+        setFundingError('The squad has not set a payment address yet. Ask them to configure their wallet address in Squad Settings → Finances.');
+        setFunding(false);
+        return;
+      }
+
+      const splitterAddr = squadPaymentAddr; // Squad's multisig receives funds directly for now
+
+      // Step 1: Create the escrow contract on-chain (if not already created)
+      setFundingError('Step 1/3: Creating escrow on-chain...');
+      try {
+        const createTx = await walletClient!.writeContract({
+          account: address!,
+          chain: walletClient!.chain!,
+          address: escrowAddr,
+          abi: SQUAD_SWARM_ESCROW_ABI,
+          functionName: 'createContract',
+          args: [
+            contractIdHex,
+            splitterAddr,      // squad/splitter address
+            splitterAddr,      // payment splitter (same for now)
+            usdcAddr,          // USDC token
+            depositAmount,     // total amount
+            BigInt(2500),      // 25% upfront
+            BigInt(5000),      // 50/50 default dispute split
+            BigInt(5000),
+          ],
+        });
+      } catch (createErr: unknown) {
+        const msg = createErr instanceof Error ? createErr.message : '';
+        // "Contract exists" means it was already created — that's fine
+        if (!msg.includes('Contract exists') && !msg.includes('already')) {
+          throw createErr;
+        }
+      }
+
+      // Step 2: Approve USDC spend
+      setFundingError('Step 2/3: Approving USDC spend...');
       const ERC20_APPROVE_ABI = [{
         type: 'function' as const,
         name: 'approve',
@@ -387,7 +437,7 @@ export default function ContractOverviewPage() {
         stateMutability: 'nonpayable' as const,
       }] as const;
 
-      const approveTx = await walletClient!.writeContract({
+      await walletClient!.writeContract({
         account: address!,
         chain: walletClient!.chain!,
         address: usdcAddr,
@@ -396,10 +446,8 @@ export default function ContractOverviewPage() {
         args: [escrowAddr, depositAmount],
       });
 
-      // Step 2: Deposit to escrow
-      setFundingError('Step 2/2: Depositing to escrow...');
-      const contractIdHex = generateContractId(contractId, 0) as Hex;
-
+      // Step 3: Deposit to escrow
+      setFundingError('Step 3/3: Depositing USDC to escrow...');
       const depositTx = await walletClient!.writeContract({
         account: address!,
         chain: walletClient!.chain!,
