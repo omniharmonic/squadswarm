@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { useWeb3 } from '@/components/web3-provider';
 import { type Address, type Hex } from 'viem';
 import { SQUAD_SWARM_ESCROW_ABI, generateContractId, toUSDC } from '@squadswarm/web3';
@@ -151,7 +152,7 @@ interface Dispute {
 export default function ContractOverviewPage() {
   const params = useParams();
   const contractId = params.contractId as string;
-  const { connect, isConnected, connecting, walletClient, address } = useWeb3();
+  const { connect, isConnected, connecting, walletClient, address, targetChain } = useWeb3();
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
   const [funding, setFunding] = useState(false);
@@ -500,25 +501,42 @@ export default function ContractOverviewPage() {
     setCompleting(true);
     setCompleteError('');
     try {
-      const escrowAddr = process.env.NEXT_PUBLIC_ESCROW_ADDRESS as Address | undefined;
+      const escrowAddr = (process.env.NEXT_PUBLIC_ESCROW_ADDRESS || '').trim() as Address | undefined;
 
-      if (escrowAddr && walletClient && address) {
-        // REAL ON-CHAIN FLOW: call complete() on escrow first
-        setCompleteError('Completing contract on-chain...');
+      if (escrowAddr) {
+        // REQUIRED: release remaining USDC on-chain before marking complete
+        let activeWallet = walletClient;
+        let activeAddress = address;
+
+        if (!activeWallet || !activeAddress) {
+          setCompleteError('Connecting wallet to release escrowed funds...');
+          const connectedAddr = await connect();
+          if (!connectedAddr) {
+            setCompleteError('Wallet connection required to release escrowed funds on-chain.');
+            setCompleting(false);
+            return;
+          }
+          activeAddress = connectedAddr;
+          const { createWalletClient: cwc, custom: ct } = await import('viem');
+          activeWallet = cwc({ account: connectedAddr, chain: targetChain, transport: ct(window.ethereum!) });
+        }
+
+        setCompleteError('Releasing remaining USDC from escrow on-chain...');
         const contractIdHex = generateContractId(contractId, 0) as Hex;
 
-        await walletClient.writeContract({
-          account: address,
-          chain: walletClient.chain!,
+        const completeTx = await activeWallet.writeContract({
+          account: activeAddress,
+          chain: activeWallet.chain!,
           address: escrowAddr,
           abi: SQUAD_SWARM_ESCROW_ABI,
           functionName: 'complete',
           args: [contractIdHex],
         });
         setCompleteError('');
+        toast.success('Funds released on-chain!');
       }
 
-      // Record completion on the server (works for both stub and real flows)
+      // Record completion on the server
       const res = await fetch(`/api/contracts/${contractId}/complete`, { method: 'POST' });
       if (res.ok) {
         setShowCompleteConfirm(false);
