@@ -47,8 +47,8 @@ export async function POST(
   }
 
   // Optional: verify the transaction on-chain if RPC is configured
-  const rpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL;
-  const escrowAddress = process.env.NEXT_PUBLIC_ESCROW_ADDRESS;
+  const rpcUrl = (process.env.NEXT_PUBLIC_BASE_RPC_URL || '').trim();
+  const escrowAddress = (process.env.NEXT_PUBLIC_ESCROW_ADDRESS || '').trim();
   if (rpcUrl && escrowAddress) {
     try {
       const { createPublicClient, http } = await import('viem');

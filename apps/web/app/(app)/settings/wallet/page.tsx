@@ -11,7 +11,7 @@ interface User {
 }
 
 export default function WalletSettingsPage() {
-  const { connect, address, isConnected, disconnect, connecting } = useWeb3();
+  const { connect, switchAccount, address, isConnected, disconnect, connecting } = useWeb3();
   const [user, setUser] = useState<User | null>(null);
   const [linking, setLinking] = useState(false);
 
@@ -103,6 +103,17 @@ export default function WalletSettingsPage() {
               {user.walletAddress}
             </div>
             <p className="text-xs text-text-secondary">Your wallet is linked to your account. You can use crypto payments and earn on-chain attestations.</p>
+            <div className="flex gap-2 mt-3">
+              <button onClick={async () => { try { await switchAccount(); } catch {} }}
+                disabled={connecting}
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium hover:bg-bg-secondary transition-colors disabled:opacity-50">
+                Switch Wallet
+              </button>
+              <button onClick={disconnect}
+                className="px-3 py-1.5 border border-error/30 text-error rounded-lg text-xs font-medium hover:bg-error/5 transition-colors">
+                Disconnect
+              </button>
+            </div>
           </div>
         ) : (
           <div className="text-center py-4">

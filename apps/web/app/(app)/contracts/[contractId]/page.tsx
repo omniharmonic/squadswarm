@@ -351,8 +351,8 @@ export default function ContractOverviewPage() {
     setFunding(true);
     setFundingError('');
     try {
-      const escrowAddr = process.env.NEXT_PUBLIC_ESCROW_ADDRESS as Address | undefined;
-      const usdcAddr = process.env.NEXT_PUBLIC_USDC_ADDRESS as Address | undefined;
+      const escrowAddr = (process.env.NEXT_PUBLIC_ESCROW_ADDRESS || '').trim() as Address | undefined;
+      const usdcAddr = (process.env.NEXT_PUBLIC_USDC_ADDRESS || '').trim() as Address | undefined;
 
       if (!escrowAddr || !usdcAddr) {
         // Contracts not deployed yet — use stub flow
