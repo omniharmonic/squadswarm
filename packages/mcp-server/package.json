@@ -10,8 +10,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "@squadswarm/db": "workspace:*",
     "@squadswarm/shared": "workspace:*",
-    "@squadswarm/db": "workspace:*"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "typescript": "^5.8.0"
