@@ -106,6 +106,25 @@ export const ROLE_TAXONOMY = [
   'Other',
 ] as const;
 
+export enum SkillCategory {
+  Frontend = 'frontend',
+  Backend = 'backend',
+  Design = 'design',
+  Data = 'data',
+  DevOps = 'devops',
+  AiMl = 'ai_ml',
+  Blockchain = 'blockchain',
+  Business = 'business',
+  Writing = 'writing',
+  Other = 'other',
+}
+
+export enum ProficiencyLevel {
+  Demonstrated = 'demonstrated', // 1-2 attestations
+  Proficient = 'proficient',     // 3-5 attestations
+  Expert = 'expert',             // 6+ attestations
+}
+
 export const FORMAT_TAXONOMY = Object.values(DeliverableFormat);
 
 export type RoleName = (typeof ROLE_TAXONOMY)[number];

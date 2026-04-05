@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { GovernanceModel, DeliverableFormat, DeliverableStatus } from '../constants';
+import { GovernanceModel, DeliverableFormat, DeliverableStatus, SkillCategory } from '../constants';
 
 export const GovernanceConfigSchema = z.object({
   model: z.nativeEnum(GovernanceModel),
@@ -27,7 +27,7 @@ export const DeliverableSchema = z.object({
   format: z.nativeEnum(DeliverableFormat),
   acceptanceCriteria: z.array(AcceptanceCriterionSchema),
   estimatedEffortHours: z.number().positive().optional(),
-  requiredSkills: z.array(z.string()).optional(),
+  requiredSkills: z.array(z.string()).default([]),
   suggestedRole: z.string().optional(),
 });
 
@@ -102,4 +102,14 @@ export type RoleAssignments = z.infer<typeof RoleAssignmentsSchema>;
 export type PaymentSchedule = z.infer<typeof PaymentScheduleSchema>;
 export type DisputeSplit = z.infer<typeof DisputeSplitSchema>;
 export type SufficiencyAssessment = z.infer<typeof SufficiencyAssessmentSchema>;
+export const SkillSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  category: z.nativeEnum(SkillCategory),
+  description: z.string().optional(),
+  synonyms: z.array(z.string()).default([]),
+});
+
+export type Skill = z.infer<typeof SkillSchema>;
 export type AcceptanceCriterion = z.infer<typeof AcceptanceCriterionSchema>;

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ROLE_TAXONOMY, FORMAT_TAXONOMY } from '@squadswarm/shared';
+import { normalizeSkills, filterVagueSkills } from './skill-normalizer';
 
 function getClient() {
   return new Anthropic();
@@ -48,6 +49,19 @@ When analyzing a scope proposal:
    - Realistic effort estimates (err on the side of generous)
    - Clear, measurable acceptance criteria
 
+## Required Skills (MANDATORY)
+
+Every deliverable MUST include a "requiredSkills" array with 2-5 specific, industry-standard skill names.
+
+Skills must be:
+- Specific technologies or methodologies (e.g., "React", "PostgreSQL", "Figma"), NOT vague terms like "development", "programming", "coding"
+- Standard industry names — use the canonical form (e.g., "React" not "React.js", "TypeScript" not "TS", "PostgreSQL" not "Postgres")
+- Relevant to actually completing the deliverable
+- From recognized skill categories: Frontend, Backend, Design, Data, DevOps, AI/ML, Blockchain, Business, Writing
+
+Bad examples: "web development", "coding", "software engineering", "general design"
+Good examples: "React", "Node.js", "Figma", "PostgreSQL", "Docker", "Technical Writing"
+
 ## Response Format
 
 ALWAYS respond with valid JSON. Choose one of two formats:
@@ -84,7 +98,7 @@ ALWAYS respond with valid JSON. Choose one of two formats:
             { "description": "Criterion", "measurableCondition": "How to verify" }
           ],
           "estimatedEffortHours": 8,
-          "requiredSkills": ["skill1"],
+          "requiredSkills": ["React", "TypeScript"],
           "suggestedRole": "Role Name"
         }
       ]
@@ -178,4 +192,39 @@ Respond with ONLY a JSON object:
     .join('');
 
   return JSON.parse(text);
+}
+
+/**
+ * Post-process a work plan to normalize and validate skills on every deliverable.
+ * Filters vague skills, normalizes to canonical forms, and ensures every deliverable
+ * has at least 1 skill. Modifies the work plan in-place.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function normalizeWorkPlanSkills(workPlan: any): any {
+  if (!workPlan || workPlan.type !== 'work_plan' || !Array.isArray(workPlan.workstreams)) {
+    return workPlan;
+  }
+
+  for (const workstream of workPlan.workstreams) {
+    if (!Array.isArray(workstream.deliverables)) continue;
+
+    for (const deliverable of workstream.deliverables) {
+      const rawSkills: string[] = Array.isArray(deliverable.requiredSkills)
+        ? deliverable.requiredSkills
+        : [];
+
+      // Step 1: Filter vague skills
+      const filtered = filterVagueSkills(rawSkills);
+
+      // Step 2: Normalize to canonical forms
+      // If all skills were filtered out, keep originals to avoid empty result
+      const skillsToNormalize = filtered.length > 0 ? filtered : rawSkills;
+      const normalized = normalizeSkills(skillsToNormalize);
+
+      // Step 3: Replace with canonical names
+      deliverable.requiredSkills = normalized.map(s => s.canonical);
+    }
+  }
+
+  return workPlan;
 }

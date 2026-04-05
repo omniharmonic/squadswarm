@@ -22,3 +22,5 @@ export { bidAssignments } from './bid-assignments';
 export { agentActionQueue } from './agent-action-queue';
 export { bidClaims } from './bid-claims';
 export { bidComments } from './bid-comments';
+export { skills } from './skills';
+export { userSkills } from './user-skills';

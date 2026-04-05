@@ -19,6 +19,7 @@ export const deliverables = pgTable('deliverables', {
   dueDate: timestamp('due_date'),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  requiredSkills: jsonb('required_skills').default([]), // Array of skill slugs
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
   index('idx_deliverables_contract_status').on(table.contractId, table.status),
