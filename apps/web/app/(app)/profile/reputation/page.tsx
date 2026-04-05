@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { AttestationBadge } from '@/components/attestation-badge';
+import { TrustScoreRing } from '@/components/trust-score-ring';
+import { SkillBadge } from '@/components/skill-badge';
 
 interface Attestation {
   id: string;
@@ -35,6 +38,22 @@ interface TrustScoreData {
   };
 }
 
+interface UserSkill {
+  id: string;
+  skillName: string;
+  skillSlug: string;
+  category: string;
+  proficiencyLevel: 'demonstrated' | 'proficient' | 'expert';
+  attestationCount: number;
+}
+
+const TRUST_THRESHOLDS = [
+  { label: 'Open', min: 0 },
+  { label: 'Verified', min: 25 },
+  { label: 'Trusted', min: 50 },
+  { label: 'Premium', min: 75 },
+];
+
 const ATTESTATION_TYPE_LABELS: Record<string, string> = {
   contract_completion: 'Contract Completion',
   client_satisfaction: 'Client Satisfaction',
@@ -47,6 +66,7 @@ export default function TrustReputationPage() {
   const [loading, setLoading] = useState(true);
   const [web3Enabled, setWeb3Enabled] = useState(false);
   const [attestations, setAttestations] = useState<Attestation[]>([]);
+  const [topSkills, setTopSkills] = useState<UserSkill[]>([]);
 
   // Check if wallet is connected (web3 enabled)
   useEffect(() => {
@@ -74,6 +94,26 @@ export default function TrustReputationPage() {
       .catch(() => {});
   }, []);
 
+  // Fetch user skills (top 5 for this page)
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then((r) => r.json())
+      .then((session) => {
+        const userId = session?.user?.id;
+        if (!userId) return;
+        return fetch(`/api/users/${userId}/skills`);
+      })
+      .then((r) => r?.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          // Sort by attestation count desc, take top 5
+          const sorted = data.sort((a: UserSkill, b: UserSkill) => b.attestationCount - a.attestationCount);
+          setTopSkills(sorted.slice(0, 5));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -83,8 +123,6 @@ export default function TrustReputationPage() {
   }
 
   const score = data?.trustScore ?? 0;
-  const circumference = 2 * Math.PI * 54;
-  const offset = circumference - (score / 100) * circumference;
 
   const breakdownItems = data
     ? [
@@ -107,42 +145,8 @@ export default function TrustReputationPage() {
       {/* Trust score circle */}
       <div className="bg-white rounded-xl border border-border p-8 mb-6">
         <div className="flex flex-col items-center">
-          <div className="relative w-36 h-36 mb-4">
-            <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-              <circle
-                cx="60"
-                cy="60"
-                r="54"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="8"
-                className="text-bg-secondary"
-              />
-              <circle
-                cx="60"
-                cy="60"
-                r="54"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={offset}
-                className={
-                  score >= 80
-                    ? 'text-success'
-                    : score >= 50
-                      ? 'text-accent-client'
-                      : 'text-error'
-                }
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-bold text-text-primary">{score}</span>
-              <span className="text-xs text-text-secondary">/ 100</span>
-            </div>
-          </div>
-          <p className="text-sm text-text-secondary">
+          <TrustScoreRing score={score} size="lg" colorByThreshold />
+          <p className="text-sm text-text-secondary mt-4">
             {score >= 80
               ? 'Excellent reputation'
               : score >= 60
@@ -151,6 +155,25 @@ export default function TrustReputationPage() {
                   ? 'Building reputation'
                   : 'Getting started'}
           </p>
+          {/* Threshold eligibility */}
+          <div className="flex flex-wrap gap-2 mt-4 justify-center">
+            {TRUST_THRESHOLDS.map((t) => {
+              const qualified = score >= t.min;
+              const gap = t.min - score;
+              return (
+                <span
+                  key={t.label}
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                    qualified
+                      ? 'bg-success/10 text-success'
+                      : 'bg-bg-secondary text-text-secondary'
+                  }`}
+                >
+                  {t.label} {qualified ? '\u2713' : `(${gap} pts away)`}
+                </span>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -223,6 +246,45 @@ export default function TrustReputationPage() {
           </div>
         </div>
       )}
+
+      {/* Skills section */}
+      <div className="bg-white rounded-xl border border-border p-6 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-text-primary">Skills</h2>
+          <Link
+            href="/profile/skills"
+            className="text-xs text-accent-agent hover:text-accent-agent-hover font-medium"
+          >
+            View all skills &rarr;
+          </Link>
+        </div>
+        {topSkills.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {topSkills.map((skill) => (
+              <SkillBadge
+                key={skill.id}
+                name={skill.skillName}
+                category={skill.category}
+                proficiencyLevel={skill.proficiencyLevel}
+                attestationCount={skill.attestationCount}
+                size="md"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-sm text-text-secondary">
+              No skills earned yet. Complete contract deliverables to build your skill portfolio.
+            </p>
+            <Link
+              href="/profile/skills"
+              className="inline-block mt-2 text-sm text-accent-agent hover:text-accent-agent-hover font-medium"
+            >
+              Learn how it works &rarr;
+            </Link>
+          </div>
+        )}
+      </div>
 
       {/* On-Chain Attestations */}
       <div className="bg-white rounded-xl border border-border p-6 mt-6">

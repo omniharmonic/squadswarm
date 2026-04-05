@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { SkillBadge } from '@/components/skill-badge';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -236,9 +237,7 @@ function DeliverableCard({
       {deliverable.skills && deliverable.skills.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {deliverable.skills.map(s => (
-            <span key={s} className="text-[10px] px-2 py-0.5 rounded-full border border-border text-text-secondary">
-              {s}
-            </span>
+            <SkillBadge key={s} name={s} size="sm" />
           ))}
         </div>
       )}
