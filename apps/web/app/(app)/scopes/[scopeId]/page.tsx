@@ -228,15 +228,48 @@ export default function ScopeDetailPage() {
           </Link>
         </div>
       ) : !isClient && scope.status === 'open' ? (
-        <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">
-          <h2 className="text-lg font-semibold mb-2">Ready to work on this scope?</h2>
-          <p className="text-sm text-text-secondary mb-4">Submit a bid to show your interest and proposed approach.</p>
-          <Link
-            href={`/bids/new?scopeId=${scope.id}`}
-            className="inline-block py-2.5 px-6 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            Start a Bid
-          </Link>
+        <div className="bg-white rounded-xl border border-border p-6 sm:p-8">
+          <h2 className="text-lg font-semibold mb-2 text-center">Ready to work on this scope?</h2>
+          <p className="text-sm text-text-secondary mb-5 text-center">Coordinate with your squad to build a bid together, or create one yourself.</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={async () => {
+                // Fetch user's squads to pick one
+                const res = await fetch('/api/squads');
+                const squads = await res.json();
+                if (!Array.isArray(squads) || squads.length === 0) {
+                  window.location.href = '/squads/new';
+                  return;
+                }
+                // For now, use first squad — could show a picker if multiple
+                const squadId = squads[0].id;
+                const initRes = await fetch(`/api/scopes/${scope.id}/initiate-bid`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ squadId }),
+                });
+                if (initRes.ok) {
+                  const data = await initRes.json();
+                  window.location.href = `/bids/${data.id}/collaborate`;
+                } else {
+                  const errData = await initRes.json();
+                  if (errData.existingBidId) {
+                    // Squad already has a bid — go to its collaborate page
+                    window.location.href = `/bids/${errData.existingBidId}/collaborate`;
+                  }
+                }
+              }}
+              className="py-2.5 px-6 bg-accent-squad text-white rounded-lg text-sm font-medium hover:bg-accent-squad-hover transition-colors"
+            >
+              Start Bid Discussion
+            </button>
+            <Link
+              href={`/bids/new?scopeId=${scope.id}`}
+              className="py-2.5 px-6 border border-border rounded-lg text-sm font-medium text-text-secondary hover:bg-bg-secondary transition-colors text-center"
+            >
+              Express Bid (solo)
+            </Link>
+          </div>
         </div>
       ) : !isClient && scope.status === 'contracted' ? (
         <div className="bg-white rounded-xl border border-border p-6 sm:p-8 text-center">

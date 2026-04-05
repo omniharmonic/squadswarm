@@ -25,38 +25,54 @@ export async function GET() {
     createdAt: string;
     governanceDeadline: string | null;
     voteUrl: string;
+    type: 'vote' | 'claim';
   }[] = [];
 
   for (const { squadId } of userSquads) {
-    // Find bids under_review for this squad
+    // Find bids needing votes (under_review or proposed)
     const underReviewBids = await db
       .select()
       .from(bids)
-      .where(and(eq(bids.squadId, squadId), eq(bids.status, 'under_review')));
+      .where(and(
+        eq(bids.squadId, squadId),
+        // Match under_review OR proposed status
+      ));
 
-    for (const bid of underReviewBids) {
-      // Check if this user has already voted
+    // Also find bids in 'forming' that need claims
+    const formingBids = await db
+      .select()
+      .from(bids)
+      .where(and(eq(bids.squadId, squadId), eq(bids.status, 'forming')));
+
+    for (const bid of formingBids) {
+      const [scope] = await db.select({ title: scopes.title }).from(scopes).where(eq(scopes.id, bid.scopeId)).limit(1);
+      const [squad] = await db.select({ name: squads.name }).from(squads).where(eq(squads.id, squadId)).limit(1);
+      pendingBids.push({
+        bidId: bid.id,
+        scopeTitle: scope?.title || 'Unknown Scope',
+        squadName: squad?.name || 'Unknown Squad',
+        proposedPrice: bid.proposedPrice,
+        createdAt: bid.createdAt.toISOString(),
+        governanceDeadline: null,
+        voteUrl: `/bids/${bid.id}/collaborate`,
+        type: 'claim',
+      });
+    }
+
+    // Filter to just under_review/proposed for voting
+    const votableBids = underReviewBids.filter(b => b.status === 'under_review' || b.status === 'proposed');
+
+    for (const bid of votableBids) {
       const [existingVote] = await db
         .select()
         .from(bidVotes)
         .where(and(eq(bidVotes.bidId, bid.id), eq(bidVotes.userId, session.userId)))
         .limit(1);
 
-      if (existingVote) continue; // Already voted
+      if (existingVote) continue;
 
-      // Get scope title
-      const [scope] = await db
-        .select({ title: scopes.title })
-        .from(scopes)
-        .where(eq(scopes.id, bid.scopeId))
-        .limit(1);
-
-      // Get squad name
-      const [squad] = await db
-        .select({ name: squads.name })
-        .from(squads)
-        .where(eq(squads.id, squadId))
-        .limit(1);
+      const [scope] = await db.select({ title: scopes.title }).from(scopes).where(eq(scopes.id, bid.scopeId)).limit(1);
+      const [squad] = await db.select({ name: squads.name }).from(squads).where(eq(squads.id, squadId)).limit(1);
 
       pendingBids.push({
         bidId: bid.id,
@@ -66,6 +82,7 @@ export async function GET() {
         createdAt: bid.createdAt.toISOString(),
         governanceDeadline: bid.governanceDeadline?.toISOString() || null,
         voteUrl: `/bids/${bid.id}/vote`,
+        type: 'vote',
       });
     }
   }

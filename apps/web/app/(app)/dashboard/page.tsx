@@ -36,6 +36,7 @@ interface PendingVote {
   proposedPrice: string | null;
   governanceDeadline: string | null;
   voteUrl: string;
+  type: 'vote' | 'claim';
 }
 
 const actionLabelMap: Record<string, string> = {
@@ -313,7 +314,7 @@ export default function DashboardPage() {
         <div className="bg-accent-squad/5 border border-accent-squad/20 rounded-xl p-6 mb-6">
           <div className="flex items-center gap-2 mb-4">
             <svg className="w-5 h-5 text-accent-squad" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-            <h2 className="text-lg font-semibold">Votes Needed</h2>
+            <h2 className="text-lg font-semibold">Action Needed</h2>
             <span className="bg-accent-squad text-white text-xs font-bold px-2 py-0.5 rounded-full">{pendingVotes.length}</span>
           </div>
           <div className="space-y-3">
@@ -331,7 +332,7 @@ export default function DashboardPage() {
                       {Math.max(0, Math.round((new Date(v.governanceDeadline).getTime() - Date.now()) / (1000 * 60 * 60)))}h left
                     </span>
                   )}
-                  <span className="text-xs font-medium text-accent-squad">Vote Now</span>
+                  <span className="text-xs font-medium text-accent-squad">{v.type === 'claim' ? 'Claim Deliverables' : 'Vote Now'}</span>
                 </div>
               </Link>
             ))}

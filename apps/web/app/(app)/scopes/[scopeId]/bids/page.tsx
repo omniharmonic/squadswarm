@@ -32,13 +32,23 @@ function formatPrice(price: string | null) {
 
 const statusStyles: Record<string, string> = {
   draft: 'bg-bg-secondary text-text-secondary',
+  forming: 'bg-accent-agent/10 text-accent-agent',
   under_review: 'bg-warning/10 text-warning',
+  proposed: 'bg-warning/10 text-warning',
+  changes_requested: 'bg-warning/10 text-warning',
   ratified: 'bg-accent-agent/10 text-accent-agent',
   submitted: 'bg-accent-squad/10 text-accent-squad',
   accepted: 'bg-success/10 text-success',
   rejected: 'bg-error/10 text-error',
   shortlisted: 'bg-accent-client/10 text-accent-client',
   withdrawn: 'bg-bg-secondary text-text-muted',
+};
+
+const statusLabels: Record<string, string> = {
+  forming: 'Forming',
+  proposed: 'Awaiting Votes',
+  changes_requested: 'Changes Requested',
+  under_review: 'Under Review',
 };
 
 export default function BidsReviewPage() {
@@ -182,11 +192,18 @@ export default function BidsReviewPage() {
                         Submitted {new Date(bid.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyles[bid.status] ?? statusStyles.draft}`}
-                    >
-                      {bid.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {(bid.status === 'forming' || bid.status === 'changes_requested') && (
+                        <Link href={`/bids/${bid.id}/collaborate`} className="text-xs text-accent-agent hover:underline">
+                          Join Discussion
+                        </Link>
+                      )}
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusStyles[bid.status] ?? statusStyles.draft}`}
+                      >
+                        {statusLabels[bid.status] || bid.status.replace(/_/g, ' ')}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Price */}

@@ -54,6 +54,7 @@ export default function BidVotePage() {
   const [summary, setSummary] = useState<VoteSummary | null>(null);
   const [myVote, setMyVote] = useState<string>('');
   const [comment, setComment] = useState('');
+  const [changeRequest, setChangeRequest] = useState('');
   const [loading, setLoading] = useState(true);
   const [voting, setVoting] = useState(false);
 
@@ -71,13 +72,21 @@ export default function BidVotePage() {
     }).finally(() => setLoading(false));
   }, [bidId]);
 
-  async function handleVote(vote: 'approve' | 'reject' | 'abstain') {
+  async function handleVote(vote: 'approve' | 'approve_with_note' | 'request_change' | 'block' | 'reject' | 'abstain') {
+    if (vote === 'request_change' && !changeRequest.trim()) {
+      toast.error('Please describe what change you want');
+      return;
+    }
     setVoting(true);
     try {
       const res = await fetch(`/api/bids/${bidId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vote, comment: comment || undefined }),
+        body: JSON.stringify({
+          vote,
+          comment: comment || undefined,
+          changeRequest: vote === 'request_change' ? changeRequest : undefined,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -104,7 +113,7 @@ export default function BidVotePage() {
     return <div className="text-center py-20"><h2 className="text-lg font-semibold">Bid not found</h2></div>;
   }
 
-  const isUnderReview = bid.status === 'under_review';
+  const isUnderReview = bid.status === 'under_review' || bid.status === 'proposed';
   const isRatified = bid.status === 'ratified';
   const deadlineDate = bid.governanceDeadline ? new Date(bid.governanceDeadline) : null;
   const timeLeft = deadlineDate ? Math.max(0, deadlineDate.getTime() - Date.now()) : 0;
@@ -206,10 +215,12 @@ export default function BidVotePage() {
               {votes.map(v => (
                 <div key={v.userId} className="flex items-center gap-3 text-sm">
                   <span className={`w-2 h-2 rounded-full ${
-                    v.vote === 'approve' ? 'bg-success' : v.vote === 'reject' ? 'bg-error' : 'bg-text-muted'
+                    v.vote === 'approve' || v.vote === 'approve_with_note' ? 'bg-success' :
+                    v.vote === 'reject' || v.vote === 'block' ? 'bg-error' :
+                    v.vote === 'request_change' ? 'bg-warning' : 'bg-text-muted'
                   }`} />
                   <span className="font-medium">{v.displayName}</span>
-                  <span className="text-text-secondary capitalize">{v.vote}</span>
+                  <span className="text-text-secondary capitalize">{v.vote.replace(/_/g, ' ')}</span>
                   {v.comment && <span className="text-text-muted">— {v.comment}</span>}
                 </div>
               ))}
@@ -222,6 +233,7 @@ export default function BidVotePage() {
       {isUnderReview && !myVote && (
         <div className="bg-white rounded-xl border border-accent-squad/20 p-6">
           <h2 className="text-lg font-semibold mb-4">Cast Your Vote</h2>
+
           <div className="mb-4">
             <label className="block text-sm font-medium mb-1.5">Comment (optional)</label>
             <textarea
@@ -230,20 +242,60 @@ export default function BidVotePage() {
               className="w-full px-3.5 py-2.5 border border-border rounded-xl bg-bg-primary focus:outline-none focus:ring-2 focus:ring-accent-squad/50 text-sm resize-y"
             />
           </div>
-          <div className="flex gap-3">
+
+          {/* Primary actions */}
+          <div className="flex gap-3 mb-3">
             <button onClick={() => handleVote('approve')} disabled={voting}
               className="flex-1 px-4 py-3 bg-success text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
               Approve
             </button>
-            <button onClick={() => handleVote('reject')} disabled={voting}
-              className="flex-1 px-4 py-3 bg-error text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
-              Reject
+            <button onClick={() => handleVote('approve_with_note')} disabled={voting || !comment.trim()}
+              className="flex-1 px-4 py-3 bg-success/80 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              title="Approve but flag your comment as important">
+              Approve with Note
+            </button>
+          </div>
+
+          {/* Request change */}
+          <div className="mb-3 p-3 bg-warning/5 border border-warning/20 rounded-xl">
+            <label className="block text-xs font-medium text-warning mb-1.5">Request a specific change (sends bid back for revision)</label>
+            <textarea
+              value={changeRequest} onChange={e => setChangeRequest(e.target.value)} rows={2}
+              placeholder="e.g. 'I think Carol should take the frontend deliverable instead of the API'"
+              className="w-full px-3 py-2 border border-warning/30 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-warning/40 resize-y mb-2"
+            />
+            <button onClick={() => handleVote('request_change')} disabled={voting || !changeRequest.trim()}
+              className="px-4 py-2 bg-warning text-white rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50">
+              Request Change
+            </button>
+          </div>
+
+          {/* Block / Abstain */}
+          <div className="flex gap-3">
+            <button onClick={() => handleVote('block')} disabled={voting || !comment.trim()}
+              className="flex-1 px-4 py-2.5 bg-error text-white rounded-xl text-xs font-medium hover:opacity-90 disabled:opacity-50"
+              title="Block this bid — requires a reason in the comment field">
+              Block (with reason)
             </button>
             <button onClick={() => handleVote('abstain')} disabled={voting}
-              className="flex-1 px-4 py-3 border border-border rounded-xl text-sm font-medium hover:bg-bg-secondary disabled:opacity-50">
+              className="flex-1 px-4 py-2.5 border border-border rounded-xl text-xs font-medium hover:bg-bg-secondary disabled:opacity-50">
               Abstain
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Changes Requested banner */}
+      {bid.status === 'changes_requested' && (
+        <div className="bg-warning/5 border border-warning/20 rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <svg className="w-5 h-5 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+            <div className="text-warning font-semibold">Changes Requested</div>
+          </div>
+          <p className="text-sm text-text-secondary mb-3">A squad member requested changes to this bid. Go back to the collaboration page to address the feedback.</p>
+          <Link href={`/bids/${bidId}/collaborate`} className="inline-block px-4 py-2 bg-accent-squad text-white rounded-lg text-sm font-medium hover:bg-accent-squad-hover">
+            Edit Bid
+          </Link>
         </div>
       )}
 

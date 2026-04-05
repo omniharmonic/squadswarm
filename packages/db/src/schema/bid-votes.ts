@@ -6,8 +6,9 @@ export const bidVotes = pgTable('bid_votes', {
   id: uuid('id').primaryKey().defaultRandom(),
   bidId: uuid('bid_id').notNull().references(() => bids.id),
   userId: uuid('user_id').notNull().references(() => users.id),
-  vote: text('vote').notNull(), // 'approve' | 'reject' | 'abstain'
+  vote: text('vote').notNull(), // 'approve' | 'approve_with_note' | 'request_change' | 'block' | 'reject' | 'abstain'
   comment: text('comment'),
+  changeRequest: text('change_request'), // specific change requested (for request_change votes)
   votedAt: timestamp('voted_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [

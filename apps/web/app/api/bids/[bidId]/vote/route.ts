@@ -10,7 +10,7 @@ interface GovernanceModel {
   threshold?: number;
 }
 
-const VALID_VOTES = ['approve', 'reject', 'abstain'] as const;
+const VALID_VOTES = ['approve', 'approve_with_note', 'reject', 'abstain', 'request_change', 'block'] as const;
 type VoteValue = (typeof VALID_VOTES)[number];
 
 export async function POST(
@@ -26,11 +26,28 @@ export async function POST(
     const body = await req.json();
     const vote = body.vote as string;
     const comment = body.comment as string | undefined;
+    const changeRequest = body.changeRequest as string | undefined;
 
     // Validate vote value
     if (!vote || !VALID_VOTES.includes(vote as VoteValue)) {
       return NextResponse.json(
-        { error: 'Vote must be one of: approve, reject, abstain' },
+        { error: `Vote must be one of: ${VALID_VOTES.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // request_change requires changeRequest text
+    if (vote === 'request_change' && (!changeRequest || changeRequest.trim().length === 0)) {
+      return NextResponse.json(
+        { error: 'changeRequest text is required for request_change votes' },
+        { status: 400 }
+      );
+    }
+
+    // block requires comment explaining why
+    if (vote === 'block' && (!comment || comment.trim().length === 0)) {
+      return NextResponse.json(
+        { error: 'A comment explaining the block reason is required' },
         { status: 400 }
       );
     }
@@ -90,6 +107,7 @@ export async function POST(
         .set({
           vote,
           comment: comment ?? existingVote.comment,
+          changeRequest: changeRequest ?? null,
           votedAt: new Date(),
         })
         .where(eq(bidVotes.id, existingVote.id));
@@ -100,6 +118,7 @@ export async function POST(
         userId: session.userId,
         vote,
         comment,
+        changeRequest: changeRequest || null,
       });
     }
 
@@ -109,9 +128,11 @@ export async function POST(
       .from(bidVotes)
       .where(eq(bidVotes.bidId, bidId));
 
-    const approveCount = allVotes.filter((v) => v.vote === 'approve').length;
+    const approveCount = allVotes.filter((v) => v.vote === 'approve' || v.vote === 'approve_with_note').length;
     const rejectCount = allVotes.filter((v) => v.vote === 'reject').length;
     const abstainCount = allVotes.filter((v) => v.vote === 'abstain').length;
+    const requestChangeCount = allVotes.filter((v) => v.vote === 'request_change').length;
+    const blockCount = allVotes.filter((v) => v.vote === 'block').length;
 
     // Get total squad member count
     const [memberCountResult] = await db
@@ -135,34 +156,41 @@ export async function POST(
     // Check if governance threshold is met
     let ratified = false;
     let rejected = false;
+    let changesRequested = false;
     const allMembersVoted = allVotes.length >= totalMembers;
     const deadlinePassed = bid.governanceDeadline ? new Date() >= bid.governanceDeadline : false;
 
     switch (governance.type) {
       case 'consent':
-        // No reject votes AND (deadline passed OR all members voted)
-        if (rejectCount > 0) {
+        // Ratified when all voted approve/approve_with_note AND no blocks AND no request_change
+        if (blockCount > 0) {
           rejected = true;
-        } else if (deadlinePassed || allMembersVoted) {
+        } else if (requestChangeCount > 0) {
+          changesRequested = true;
+        } else if ((deadlinePassed || allMembersVoted) && approveCount > 0) {
           ratified = true;
         }
         break;
 
       case 'majority':
-        // Approve count > 50% of squad members
+        // Ratified when approve+approve_with_note > 50%
         if (approveCount > totalMembers / 2) {
           ratified = true;
-        } else if (rejectCount > totalMembers / 2) {
+        } else if (rejectCount + blockCount > totalMembers / 2) {
           rejected = true;
+        } else if (requestChangeCount > totalMembers / 2) {
+          changesRequested = true;
         }
         break;
 
       case 'delegated':
         // Any admin approved
-        if (vote === 'approve' && membership.role === 'admin') {
+        if ((vote === 'approve' || vote === 'approve_with_note') && membership.role === 'admin') {
           ratified = true;
-        } else if (vote === 'reject' && membership.role === 'admin') {
+        } else if ((vote === 'reject' || vote === 'block') && membership.role === 'admin') {
           rejected = true;
+        } else if (vote === 'request_change' && membership.role === 'admin') {
+          changesRequested = true;
         }
         break;
 
@@ -173,7 +201,7 @@ export async function POST(
         }
     }
 
-    // Update bid status if threshold reached
+    // Update bid status based on outcome
     if (ratified) {
       await db
         .update(bids)
@@ -181,6 +209,16 @@ export async function POST(
           status: 'ratified',
           governanceStatus: 'ratified',
           ratifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(bids.id, bidId));
+    } else if (changesRequested) {
+      await db
+        .update(bids)
+        .set({
+          status: 'forming',
+          governanceStatus: 'changes_requested',
+          governanceDeadline: null,
           updatedAt: new Date(),
         })
         .where(eq(bids.id, bidId));
@@ -208,18 +246,27 @@ export async function POST(
 
       let notificationTitle = `Vote cast on your bid`;
       let notificationBody = `${voterName} voted "${vote}" on your bid.`;
+      let notificationType = 'bid_vote_cast';
 
       if (ratified) {
         notificationTitle = 'Bid ratified!';
         notificationBody = `Your bid has been ratified by the squad and is ready for submission.`;
+        notificationType = 'bid_ratified';
+      } else if (changesRequested) {
+        notificationTitle = 'Changes requested on your bid';
+        notificationBody = changeRequest
+          ? `${voterName} requested changes: "${changeRequest}"`
+          : `${voterName} requested changes on your bid.`;
+        notificationType = 'bid_changes_requested';
       } else if (rejected) {
         notificationTitle = 'Bid sent back for revision';
         notificationBody = `Your bid was not approved. Please revise and resubmit for review.`;
+        notificationType = 'bid_rejected';
       }
 
       await db.insert(notifications).values({
         userId: bid.createdById,
-        type: ratified ? 'bid_ratified' : rejected ? 'bid_rejected' : 'bid_vote_cast',
+        type: notificationType,
         title: notificationTitle,
         body: notificationBody,
         metadata: {
@@ -227,20 +274,24 @@ export async function POST(
           squadId: bid.squadId,
           vote,
           voterName,
+          changeRequest: changeRequest || undefined,
         },
       });
     }
 
-    console.log(`[Activity] bid_vote_cast: bid=${bidId} user=${session.userId} vote=${vote} ratified=${ratified} rejected=${rejected}`);
+    console.log(`[Activity] bid_vote_cast: bid=${bidId} user=${session.userId} vote=${vote} ratified=${ratified} rejected=${rejected} changesRequested=${changesRequested}`);
 
     return NextResponse.json({
       vote,
       ratified,
       rejected,
+      changesRequested,
       votesSummary: {
         approve: approveCount,
         reject: rejectCount,
         abstain: abstainCount,
+        requestChange: requestChangeCount,
+        block: blockCount,
         total: allVotes.length,
         threshold: totalMembers,
         governanceType: governance.type,

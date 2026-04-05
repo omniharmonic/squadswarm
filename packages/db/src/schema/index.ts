@@ -20,3 +20,5 @@ export { attestations } from './attestations';
 export { bidVotes } from './bid-votes';
 export { bidAssignments } from './bid-assignments';
 export { agentActionQueue } from './agent-action-queue';
+export { bidClaims } from './bid-claims';
+export { bidComments } from './bid-comments';
