@@ -3,17 +3,23 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import "../src/SquadSwarmEscrow.sol";
-import "../src/PaymentSplitter.sol";
+import "../src/MockUSDC.sol";
 
 contract Deploy is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address arbitrator = vm.envAddress("ARBITRATOR_ADDRESS");
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy the escrow contract
-        SquadSwarmEscrow escrow = new SquadSwarmEscrow();
+        // Deploy mock USDC for testnet
+        MockUSDC usdc = new MockUSDC();
+        console.log("MockUSDC deployed at:", address(usdc));
+
+        // Deploy the escrow contract with arbitrator
+        SquadSwarmEscrow escrow = new SquadSwarmEscrow(arbitrator);
         console.log("SquadSwarmEscrow deployed at:", address(escrow));
+        console.log("Arbitrator:", arbitrator);
 
         vm.stopBroadcast();
     }
