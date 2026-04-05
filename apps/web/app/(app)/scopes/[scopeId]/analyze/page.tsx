@@ -296,7 +296,16 @@ export default function AIAnalysisPage() {
             } else if (data.type === 'done') {
               const content = data.text || accumulated;
               setMessages((prev) => [...prev, { role: 'analyst', content }]);
-              const isReady = data.status === 'ready' || hasWorkPlan(content);
+              // Check if ready: server says ready, OR content has a work plan,
+              // OR content has a sufficiency assessment with isReady=true or high scores
+              const segments = parseContent(content);
+              const hasWP = segments.some(s => s.kind === 'result' && s.data.type === 'work_plan');
+              const hasReadyAssessment = segments.some(s =>
+                s.kind === 'result' &&
+                s.data.type === 'sufficiency_assessment' &&
+                ((s.data as SufficiencyAssessment).isReady === true || (s.data as SufficiencyAssessment).overallScore >= 80)
+              );
+              const isReady = data.status === 'ready' || hasWP || hasReadyAssessment;
               if (isReady) {
                 setStatus('ready');
                 // Force backend status + work plan storage in case server-side extraction failed
@@ -376,7 +385,7 @@ export default function AIAnalysisPage() {
   }
 
   const showPublish = status === 'ready' && !isStreaming;
-  const showAutoImprove = status === 'questions' && !isStreaming;
+  const showAutoImprove = (status === 'questions' || status === 'ready') && !isStreaming;
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-8rem)]">
