@@ -928,16 +928,16 @@ export default function ContractOverviewPage() {
       </div>
 
       {/* Complete Contract — shown when all deliverables approved and contract is active */}
-      {contract.status === 'active' && allApproved && totalCount > 0 && (
+      {(contract.status === 'in_review' || (contract.status === 'active' && allApproved && totalCount > 0)) && (
         <div className="bg-success/5 rounded-xl border-2 border-success/30 p-5 mb-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-success uppercase tracking-wide mb-1">Ready to Complete</h2>
+              <h2 className="text-sm font-semibold text-success uppercase tracking-wide mb-1">All Deliverables Approved</h2>
               <p className="text-text-primary font-medium">
-                All {totalCount} deliverables approved. Releasing {formatCurrency(totalAmount)} to {contract.squadName}.
+                All {totalCount} deliverables approved. Release {formatCurrency(totalAmount)} USDC from escrow to {contract.squadName}.
               </p>
               <p className="text-xs text-text-secondary mt-1">
-                The on-chain USDC release will be triggered after confirmation.
+                This requires a wallet transaction to release the remaining escrowed USDC on Base.
               </p>
             </div>
             {!showCompleteConfirm ? (

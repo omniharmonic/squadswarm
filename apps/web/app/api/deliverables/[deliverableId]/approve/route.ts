@@ -140,20 +140,23 @@ export async function POST(
     );
 
     if (allWsComplete) {
+      // DON'T auto-complete the contract — the client needs to call
+      // complete() on the escrow contract on-chain to release funds.
+      // Instead, mark it as "ready for completion" so the UI shows
+      // the "Complete Contract & Release Funds" button.
       await db
         .update(contracts)
-        .set({ status: 'completed', completedAt: new Date(), updatedAt: new Date() })
+        .set({ status: 'in_review', updatedAt: new Date() })
         .where(eq(contracts.id, deliverable.contractId));
 
       await db.insert(activityLog).values({
         contractId: deliverable.contractId,
         actorUserId: session.userId,
-        action: 'contract_completed',
+        action: 'all_deliverables_approved',
         entityType: 'contract',
         entityId: deliverable.contractId,
         metadata: {
           totalAmount: totalAmount.toFixed(2),
-          totalReleased: totalAmount.toFixed(2),
           token: 'USDC',
           chain: 'base',
           allDeliverablesApproved: true,
