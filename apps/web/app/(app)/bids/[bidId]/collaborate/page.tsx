@@ -690,8 +690,8 @@ export default function BidCollaboratePage() {
             title: del.title,
             workstream: ws.title,
             format: del.format,
-            estimatedHours: del.estimatedHours,
-            skills: del.skills,
+            estimatedHours: del.estimatedEffortHours || del.estimatedHours,
+            skills: del.requiredSkills || del.skills,
           });
           idx++;
         }

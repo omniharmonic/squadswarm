@@ -8,6 +8,7 @@ import { getSession } from '@/lib/auth';
 interface WorkPlanDeliverable {
   title: string;
   format?: string;
+  estimatedEffortHours?: number;
   estimatedHours?: number;
   requiredSkills?: string[];
 }
@@ -100,7 +101,7 @@ export async function GET(
           flatDeliverables.push({
             title: del.title,
             format: del.format || 'unknown',
-            estimatedHours: del.estimatedHours || 0,
+            estimatedHours: del.estimatedEffortHours || del.estimatedHours || 0,
             requiredSkills: del.requiredSkills || [],
           });
         }
