@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyMessage } from 'viem';
+import { verifyMessage, getAddress } from 'viem';
 import { db, users } from '@squadswarm/db';
 import { eq } from 'drizzle-orm';
 import { createSession, getSession, setSessionCookie } from '@/lib/auth';
@@ -30,11 +30,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Extract and checksum the address
+    const rawAddress = extractAddress(message);
+    const checksumAddress = getAddress(rawAddress);
+
     // Verify the signature
     const valid = await verifyMessage({
       message,
       signature: signature as `0x${string}`,
-      address: extractAddress(message),
+      address: checksumAddress,
     });
 
     if (!valid) {
@@ -44,7 +48,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const walletAddress = extractAddress(message).toLowerCase();
+    const walletAddress = checksumAddress.toLowerCase();
     const session = await getSession();
 
     let user;
@@ -107,8 +111,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('SIWE verification error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Authentication failed' },
+      { error: 'Authentication failed', detail: errorMessage },
       { status: 500 },
     );
   }
