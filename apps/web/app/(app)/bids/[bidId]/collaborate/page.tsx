@@ -36,7 +36,9 @@ interface ScopeData {
       deliverables?: {
         title: string;
         format?: string;
+        estimatedEffortHours?: number;
         estimatedHours?: number;
+        requiredSkills?: string[];
         skills?: string[];
       }[];
     }[];
