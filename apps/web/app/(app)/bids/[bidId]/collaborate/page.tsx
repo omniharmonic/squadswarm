@@ -903,7 +903,7 @@ export default function BidCollaboratePage() {
       const res = await fetch(`/api/bids/${bidId}/claims`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deliverableKey, note, paymentShareBps }),
+        body: JSON.stringify({ deliverableKey, note, proposedBps: paymentShareBps }),
       });
       if (res.ok) {
         toast.success('Deliverable claimed');
@@ -934,10 +934,13 @@ export default function BidCollaboratePage() {
 
   async function handleUpdateBps(claimId: string, paymentShareBps: number) {
     try {
+      // Find the claim to get its deliverableKey — POST upserts existing claims
+      const claim = claims.find(c => c.id === claimId);
+      if (!claim) return;
       const res = await fetch(`/api/bids/${bidId}/claims`, {
-        method: 'PATCH',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ claimId, paymentShareBps }),
+        body: JSON.stringify({ deliverableKey: claim.deliverableKey, proposedBps: paymentShareBps }),
       });
       if (res.ok) {
         fetchClaims();
@@ -950,7 +953,7 @@ export default function BidCollaboratePage() {
       const res = await fetch(`/api/bids/${bidId}/claims`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deliverableKey, agentId, paymentShareBps }),
+        body: JSON.stringify({ deliverableKey, agentId, proposedBps: paymentShareBps }),
       });
       if (res.ok) {
         toast.success('Agent suggested');
