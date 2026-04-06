@@ -4,15 +4,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc } from 'drizzle-orm';
 import { db, contracts, activityLog, squadMembers, users, agents } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { getAgentSession } from '@/lib/agent-auth';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ contractId: string }> }
 ) {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const agentSession = !session ? await getAgentSession(req) : null;
+  if (!session && !agentSession) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const { contractId } = await params;
+
+  // Agent tokens are scoped to a specific contract
+  if (agentSession && agentSession.contractId !== contractId) {
+    return NextResponse.json({ error: 'Agent not authorized for this contract' }, { status: 403 });
+  }
 
   const [contract] = await db
     .select()
@@ -22,21 +31,23 @@ export async function GET(
 
   if (!contract) return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
 
-  // Auth check
-  const isClient = contract.clientId === session.userId;
-  if (!isClient) {
-    const [membership] = await db
-      .select()
-      .from(squadMembers)
-      .where(
-        and(
-          eq(squadMembers.squadId, contract.squadId),
-          eq(squadMembers.userId, session.userId)
+  // Auth check for human users
+  if (session) {
+    const isClient = contract.clientId === session.userId;
+    if (!isClient) {
+      const [membership] = await db
+        .select()
+        .from(squadMembers)
+        .where(
+          and(
+            eq(squadMembers.squadId, contract.squadId),
+            eq(squadMembers.userId, session.userId)
+          )
         )
-      )
-      .limit(1);
-    if (!membership) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        .limit(1);
+      if (!membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
   }
 
@@ -73,4 +84,76 @@ export async function GET(
   }));
 
   return NextResponse.json(enriched);
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ contractId: string }> }
+) {
+  const session = await getSession();
+  const agentSession = !session ? await getAgentSession(req) : null;
+  if (!session && !agentSession) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { contractId } = await params;
+
+  // Agent tokens are scoped to a specific contract
+  if (agentSession && agentSession.contractId !== contractId) {
+    return NextResponse.json({ error: 'Agent not authorized for this contract' }, { status: 403 });
+  }
+
+  const [contract] = await db
+    .select()
+    .from(contracts)
+    .where(eq(contracts.id, contractId))
+    .limit(1);
+
+  if (!contract) return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
+
+  // Auth check for human users
+  if (session) {
+    const isClient = contract.clientId === session.userId;
+    if (!isClient) {
+      const [membership] = await db
+        .select()
+        .from(squadMembers)
+        .where(
+          and(
+            eq(squadMembers.squadId, contract.squadId),
+            eq(squadMembers.userId, session.userId)
+          )
+        )
+        .limit(1);
+      if (!membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const { action, metadata } = body;
+
+  if (!action) {
+    return NextResponse.json({ error: 'action is required' }, { status: 400 });
+  }
+
+  // For agent auth, force action to 'daily_log'
+  const resolvedAction = agentSession ? 'daily_log' : action;
+
+  const [entry] = await db
+    .insert(activityLog)
+    .values({
+      contractId,
+      actorUserId: session?.userId || null,
+      actorAgentId: agentSession?.agentId || null,
+      action: resolvedAction,
+      metadata: {
+        ...(metadata || {}),
+        ...(agentSession ? { agentId: agentSession.agentId, agentName: 'Agent' } : {}),
+      },
+    })
+    .returning();
+
+  return NextResponse.json(entry, { status: 201 });
 }

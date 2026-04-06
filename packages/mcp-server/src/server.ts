@@ -1,11 +1,37 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
+import { apiCall, type ApiClientConfig } from './api-client';
 
 export interface AgentContext {
   agentId: string;
   agentName: string;
   ownerId: string;
   contractId: string;
+  autonomyLevel: 'supervised' | 'trusted' | 'autonomous';
+  token: string;
+  baseUrl: string;
+}
+
+function makeConfig(context: AgentContext): ApiClientConfig {
+  return { baseUrl: context.baseUrl, token: context.token };
+}
+
+function ok(data: unknown) {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+  };
+}
+
+function err(error: unknown) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      },
+    ],
+    isError: true as const,
+  };
 }
 
 export function createSquadSwarmMcpServer(context: AgentContext) {
@@ -14,27 +40,55 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
     version: '0.1.0',
   });
 
+  const config = makeConfig(context);
+
   // ── Task Management ──
 
   server.tool(
     'get_my_tasks',
     'Get all deliverables assigned to this agent in the current contract',
-    {},
-    async () => {
-      // TODO: Query deliverables where assignedAgentId = context.agentId
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              contractId: context.contractId,
-              agentId: context.agentId,
-              tasks: [],
-              message: 'No tasks assigned yet. Use the SquadSwarm UI to assign deliverables to this agent.',
-            }),
-          },
-        ],
-      };
+    {
+      status: z
+        .string()
+        .optional()
+        .describe('Filter by status (e.g. not_started, in_progress, in_review, blocked)'),
+    },
+    async ({ status }) => {
+      try {
+        const data = await apiCall<{
+          workstreams: Array<{
+            id: string;
+            title: string;
+            deliverables: Array<{
+              id: string;
+              title: string;
+              status: string;
+              assignedAgent: { id: string; name: string } | null;
+              [key: string]: unknown;
+            }>;
+          }>;
+        }>(config, 'GET', `/api/contracts/${context.contractId}/board`);
+
+        // Flatten and filter to only this agent's deliverables
+        let myTasks = data.workstreams.flatMap((ws) =>
+          ws.deliverables
+            .filter((d) => d.assignedAgent?.id === context.agentId)
+            .map((d) => ({ ...d, workstream: ws.title, workstreamId: ws.id })),
+        );
+
+        if (status) {
+          myTasks = myTasks.filter((d) => d.status === status);
+        }
+
+        return ok({
+          contractId: context.contractId,
+          agentId: context.agentId,
+          tasks: myTasks,
+          total: myTasks.length,
+        });
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -47,21 +101,17 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       note: z.string().optional().describe('Optional note about the status change'),
     },
     async ({ deliverableId, status, note }) => {
-      // TODO: Call deliverable status API
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              deliverableId,
-              newStatus: status,
-              note,
-              message: `Status updated to ${status}`,
-            }),
-          },
-        ],
-      };
+      try {
+        const updated = await apiCall(
+          config,
+          'PATCH',
+          `/api/contracts/${context.contractId}/deliverables/${deliverableId}/status`,
+          { status, note },
+        );
+        return ok(updated);
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -71,22 +121,44 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
     {
       deliverableId: z.string().uuid().describe('The deliverable ID'),
       reason: z.string().describe('Why this deliverable is blocked'),
+      severity: z
+        .enum(['low', 'medium', 'high', 'critical'])
+        .default('medium')
+        .describe('Severity of the blocker'),
     },
-    async ({ deliverableId, reason }) => {
-      // TODO: Update status to blocked + create activity log
-      return {
-        content: [
+    async ({ deliverableId, reason, severity }) => {
+      try {
+        // 1. Update deliverable status to blocked
+        await apiCall(
+          config,
+          'PATCH',
+          `/api/contracts/${context.contractId}/deliverables/${deliverableId}/status`,
+          { status: 'blocked', note: reason },
+        );
+
+        // 2. Post a message about the blocker
+        await apiCall(
+          config,
+          'POST',
+          `/api/contracts/${context.contractId}/messages`,
           {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              deliverableId,
-              status: 'blocked',
-              reason,
-            }),
+            content: `🚫 BLOCKER [${severity.toUpperCase()}]: ${reason}\n\nDeliverable: ${deliverableId}`,
+            channelType: 'general',
           },
-        ],
-      };
+        );
+
+        return ok({
+          success: true,
+          deliverableId,
+          status: 'blocked',
+          severity,
+          reason,
+          statusUpdated: true,
+          messagePosted: true,
+        });
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -95,19 +167,16 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
     'Get full project context including contract details, workstreams, and team',
     {},
     async () => {
-      // TODO: Fetch contract detail with workstreams + deliverables
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              contractId: context.contractId,
-              agent: { id: context.agentId, name: context.agentName },
-              message: 'Project context will include full contract details, workstreams, team members, and deliverables.',
-            }),
-          },
-        ],
-      };
+      try {
+        const data = await apiCall(
+          config,
+          'GET',
+          `/api/contracts/${context.contractId}`,
+        );
+        return ok(data);
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -122,20 +191,21 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       content: z.string().describe('Message content (markdown supported)'),
     },
     async ({ channelType, channelId, content: msgContent }) => {
-      // TODO: Insert message with agentId attribution
-      return {
-        content: [
+      try {
+        const message = await apiCall(
+          config,
+          'POST',
+          `/api/contracts/${context.contractId}/messages`,
           {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              channel: { type: channelType, id: channelId },
-              from: context.agentName,
-              message: 'Message posted',
-            }),
+            content: msgContent,
+            channelType,
+            channelId: channelId || undefined,
           },
-        ],
-      };
+        );
+        return ok(message);
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -148,19 +218,21 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       limit: z.number().int().min(1).max(50).default(20).describe('Number of messages'),
     },
     async ({ channelType, channelId, limit }) => {
-      // TODO: Fetch messages from DB
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              channel: { type: channelType, id: channelId },
-              messages: [],
-              total: 0,
-            }),
-          },
-        ],
-      };
+      try {
+        const params = new URLSearchParams();
+        params.set('channelType', channelType);
+        if (channelId) params.set('channelId', channelId);
+        params.set('limit', String(limit));
+
+        const data = await apiCall(
+          config,
+          'GET',
+          `/api/contracts/${context.contractId}/messages?${params.toString()}`,
+        );
+        return ok(data);
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -175,22 +247,23 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       content: z.string().describe('File content (base64 encoded for binary, plain text for text files)'),
       isFinal: z.boolean().default(false).describe('Mark as final submission (moves deliverable to in_review)'),
     },
-    async ({ deliverableId, fileName, isFinal }) => {
-      // TODO: Upload to Supabase Storage + create file record
-      return {
-        content: [
+    async ({ deliverableId, fileName, content: fileContent, isFinal }) => {
+      try {
+        const result = await apiCall(
+          config,
+          'POST',
+          `/api/contracts/${context.contractId}/files/agent-upload`,
           {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              deliverableId,
-              fileName,
-              isFinal,
-              message: isFinal ? 'File uploaded and deliverable submitted for review' : 'File uploaded',
-            }),
+            deliverableId,
+            fileName,
+            content: fileContent,
+            isFinal: isFinal || false,
           },
-        ],
-      };
+        );
+        return ok(result);
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -205,22 +278,48 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       deliverableIds: z.array(z.string().uuid()).describe('Deliverables worked on'),
     },
     async ({ summary, hoursWorked, deliverableIds }) => {
-      // TODO: Store in agent_logs table
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              agent: context.agentName,
-              summary,
-              hoursWorked,
-              deliverables: deliverableIds.length,
-              message: 'Daily log submitted',
-            }),
-          },
-        ],
-      };
+      try {
+        // Try posting to activity endpoint first, fall back to messages
+        try {
+          const result = await apiCall(
+            config,
+            'POST',
+            `/api/contracts/${context.contractId}/activity`,
+            {
+              action: 'daily_log',
+              metadata: {
+                summary,
+                hoursWorked,
+                deliverableIds,
+                agentId: context.agentId,
+              },
+            },
+          );
+          return ok(result);
+        } catch {
+          // Fallback: post as a message to internal channel
+          const deliverableList =
+            deliverableIds.length > 0
+              ? `\nDeliverables: ${deliverableIds.join(', ')}`
+              : '';
+          const message = await apiCall(
+            config,
+            'POST',
+            `/api/contracts/${context.contractId}/messages`,
+            {
+              content: `📋 Daily Log from ${context.agentName}:\n${summary}\nHours: ${hoursWorked ?? 'N/A'}${deliverableList}`,
+              channelType: 'internal',
+            },
+          );
+          return ok({
+            ...message as object,
+            fallback: true,
+            message: 'Daily log posted as message (activity endpoint not available)',
+          });
+        }
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -231,19 +330,42 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       deliverableId: z.string().uuid().describe('The deliverable ID'),
     },
     async ({ deliverableId }) => {
-      // TODO: Fetch from DB
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              deliverableId,
-              criteria: [],
-              message: 'Acceptance criteria will be populated from the work plan.',
-            }),
-          },
-        ],
-      };
+      try {
+        const data = await apiCall<{
+          workstreams: Array<{
+            deliverables: Array<{
+              id: string;
+              title: string;
+              status: string;
+              format: string | null;
+              acceptanceCriteria: unknown;
+              [key: string]: unknown;
+            }>;
+          }>;
+        }>(config, 'GET', `/api/contracts/${context.contractId}/board`);
+
+        // Find the deliverable across all workstreams
+        const deliverable = data.workstreams
+          .flatMap((ws) => ws.deliverables)
+          .find((d) => d.id === deliverableId);
+
+        if (!deliverable) {
+          return ok({
+            error: 'Deliverable not found',
+            deliverableId,
+          });
+        }
+
+        return ok({
+          deliverableId: deliverable.id,
+          title: deliverable.title,
+          status: deliverable.status,
+          format: deliverable.format,
+          acceptanceCriteria: deliverable.acceptanceCriteria,
+        });
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -258,22 +380,20 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       urgency: z.enum(['low', 'medium', 'high']).default('medium').describe('How urgent is this clarification'),
     },
     async ({ deliverableId, question, urgency }) => {
-      // Posts a clarification request as a message tagged to the deliverable
-      return {
-        content: [
+      try {
+        const message = await apiCall(
+          config,
+          'POST',
+          `/api/contracts/${context.contractId}/messages`,
           {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              deliverableId,
-              question,
-              urgency,
-              from: context.agentName,
-              message: 'Clarification request posted to the deliverable channel.',
-            }),
+            content: `❓ [CLARIFICATION${urgency ? ` - ${urgency.toUpperCase()}` : ''}] Re: deliverable ${deliverableId}\n\n${question}`,
+            channelType: 'general',
           },
-        ],
-      };
+        );
+        return ok(message);
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 
@@ -284,21 +404,16 @@ export function createSquadSwarmMcpServer(context: AgentContext) {
       limit: z.number().int().min(1).max(100).default(20).describe('Number of activity entries'),
     },
     async ({ limit }) => {
-      // TODO: Fetch from activity_log table
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              contractId: context.contractId,
-              activities: [],
-              total: 0,
-              limit,
-              message: 'Team activity feed from the activity log.',
-            }),
-          },
-        ],
-      };
+      try {
+        const data = await apiCall(
+          config,
+          'GET',
+          `/api/contracts/${context.contractId}/activity?limit=${limit}`,
+        );
+        return ok(data);
+      } catch (e) {
+        return err(e);
+      }
     },
   );
 

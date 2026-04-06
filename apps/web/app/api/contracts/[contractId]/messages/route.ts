@@ -11,9 +11,18 @@ export async function GET(
   { params }: { params: Promise<{ contractId: string }> }
 ) {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const agentSession = !session ? await getAgentSession(req) : null;
+  if (!session && !agentSession) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const { contractId } = await params;
+
+  // Agent tokens are scoped to a specific contract
+  if (agentSession && agentSession.contractId !== contractId) {
+    return NextResponse.json({ error: 'Agent not authorized for this contract' }, { status: 403 });
+  }
+
   const { searchParams } = new URL(req.url);
   const channelType = searchParams.get('channelType');
   const channelId = searchParams.get('channelId');
@@ -29,21 +38,23 @@ export async function GET(
 
   if (!contract) return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
 
-  // Auth check
-  const isClient = contract.clientId === session.userId;
-  if (!isClient) {
-    const [membership] = await db
-      .select()
-      .from(squadMembers)
-      .where(
-        and(
-          eq(squadMembers.squadId, contract.squadId),
-          eq(squadMembers.userId, session.userId)
+  // Auth check for human users
+  if (session) {
+    const isClient = contract.clientId === session.userId;
+    if (!isClient) {
+      const [membership] = await db
+        .select()
+        .from(squadMembers)
+        .where(
+          and(
+            eq(squadMembers.squadId, contract.squadId),
+            eq(squadMembers.userId, session.userId)
+          )
         )
-      )
-      .limit(1);
-    if (!membership) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        .limit(1);
+      if (!membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
   }
 
