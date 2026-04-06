@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, ne } from 'drizzle-orm';
 import { db, bids, bidClaims, scopes, squadMembers, users, agents, notifications } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { getAgentSession } from '@/lib/agent-auth';
 
 interface WorkPlanDeliverable {
   title: string;
@@ -226,13 +227,25 @@ export async function POST(
   { params }: { params: Promise<{ bidId: string }> }
 ) {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const agentSession = !session ? await getAgentSession(req) : null;
+  if (!session && !agentSession) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const { bidId } = await params;
 
+  // Determine the acting user — session user or agent's owner
+  const userId = session?.userId || agentSession?.ownerId;
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
-    const { deliverableKey, proposedBps, note, agentId } = body;
+    const { deliverableKey, proposedBps, note, agentId: bodyAgentId } = body;
+
+    // For agent auth, use the agentId from the JWT; for session auth, use the body
+    const agentId = agentSession ? agentSession.agentId : bodyAgentId;
 
     // Validate required fields
     if (deliverableKey === undefined || deliverableKey === null) {
@@ -259,14 +272,14 @@ export async function POST(
       );
     }
 
-    // Auth: must be squad member
+    // Auth: must be squad member (check using the resolved userId)
     const [membership] = await db
       .select()
       .from(squadMembers)
       .where(
         and(
           eq(squadMembers.squadId, bid.squadId),
-          eq(squadMembers.userId, session.userId)
+          eq(squadMembers.userId, userId)
         )
       )
       .limit(1);
@@ -278,15 +291,15 @@ export async function POST(
       );
     }
 
-    // If agentId provided, verify the user owns that agent
-    if (agentId) {
+    // If agentId provided (from session auth body), verify the user owns that agent
+    if (agentId && !agentSession) {
       const [agent] = await db
         .select()
         .from(agents)
         .where(
           and(
             eq(agents.id, agentId),
-            eq(agents.ownerId, session.userId)
+            eq(agents.ownerId, userId)
           )
         )
         .limit(1);
@@ -299,7 +312,7 @@ export async function POST(
       }
     }
 
-    const claimantUserId = agentId ? null : session.userId;
+    const claimantUserId = agentId ? null : userId;
     const claimantAgentId = agentId || null;
 
     // Check if this user/agent already has a non-withdrawn claim on this deliverable
@@ -318,7 +331,7 @@ export async function POST(
     const myExistingClaim = existingClaims.find(c =>
       agentId
         ? c.agentId === agentId
-        : c.userId === session.userId
+        : c.userId === userId
     );
 
     let claim: typeof existingClaims[number];
@@ -360,7 +373,7 @@ export async function POST(
     const otherActiveClaims = existingClaims.filter(c =>
       agentId
         ? c.agentId !== agentId
-        : c.userId !== session.userId
+        : c.userId !== userId
     );
 
     if (otherActiveClaims.length > 0) {
@@ -387,7 +400,7 @@ export async function POST(
       .where(
         and(
           eq(squadMembers.squadId, bid.squadId),
-          ne(squadMembers.userId, session.userId)
+          ne(squadMembers.userId, userId)
         )
       );
 
@@ -395,7 +408,7 @@ export async function POST(
       const [claimant] = await db
         .select({ displayName: users.displayName })
         .from(users)
-        .where(eq(users.id, session.userId))
+        .where(eq(users.id, userId))
         .limit(1);
 
       const claimantName = claimant?.displayName || 'A squad member';
@@ -420,7 +433,7 @@ export async function POST(
       );
     }
 
-    console.log(`[Activity] deliverable_claimed: bid=${bidId} key=${deliverableKey} user=${session.userId} agent=${agentId || 'none'}`);
+    console.log(`[Activity] deliverable_claimed: bid=${bidId} key=${deliverableKey} user=${userId} agent=${agentId || 'none'}`);
 
     return NextResponse.json(claim);
   } catch (error) {
