@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
-import { db, bids } from '@squadswarm/db';
+import { db, bids, squadMembers } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 
 export async function GET(
@@ -25,6 +25,8 @@ export async function GET(
   return NextResponse.json(bid);
 }
 
+const EDITABLE_STATUSES = ['draft', 'forming', 'changes_requested'];
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ bidId: string }> }
@@ -34,21 +36,29 @@ export async function PATCH(
 
   const { bidId } = await params;
 
-  // Verify ownership and draft status
+  // Fetch the bid
   const [existing] = await db
     .select()
     .from(bids)
-    .where(
-      and(
-        eq(bids.id, bidId),
-        eq(bids.createdById, session.userId)
-      )
-    )
+    .where(eq(bids.id, bidId))
     .limit(1);
 
   if (!existing) return NextResponse.json({ error: 'Bid not found' }, { status: 404 });
-  if (existing.status !== 'draft') {
-    return NextResponse.json({ error: 'Can only edit bids in draft status' }, { status: 400 });
+
+  // Allow editing in draft, forming, or changes_requested
+  if (!EDITABLE_STATUSES.includes(existing.status)) {
+    return NextResponse.json({ error: `Cannot edit bid in '${existing.status}' status` }, { status: 400 });
+  }
+
+  // Verify the user is a squad member (not just the creator)
+  const [membership] = await db
+    .select()
+    .from(squadMembers)
+    .where(and(eq(squadMembers.squadId, existing.squadId), eq(squadMembers.userId, session.userId)))
+    .limit(1);
+
+  if (!membership) {
+    return NextResponse.json({ error: 'Only squad members can edit this bid' }, { status: 403 });
   }
 
   try {
