@@ -80,7 +80,7 @@ export async function POST(
       const { meets, gap, required } = getThresholdGap(squadScore, threshold);
 
       if (!meets) {
-        const thresholdConfig = TRUST_THRESHOLDS[threshold] || TRUST_THRESHOLDS.open;
+        const thresholdConfig = TRUST_THRESHOLDS[threshold] ?? TRUST_THRESHOLDS.open!;
         return NextResponse.json(
           {
             error: 'Trust threshold not met',

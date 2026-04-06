@@ -22,9 +22,11 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string
   other:      { bg: 'bg-bg-secondary', text: 'text-text-muted', border: 'border-border' },
 };
 
-function getCategoryColors(category?: string) {
-  if (!category) return CATEGORY_COLORS.other;
-  return CATEGORY_COLORS[category.toLowerCase()] ?? CATEGORY_COLORS.other;
+const DEFAULT_COLORS = CATEGORY_COLORS.other!;
+
+function getCategoryColors(category?: string): { bg: string; text: string; border: string } {
+  if (!category) return DEFAULT_COLORS;
+  return CATEGORY_COLORS[category.toLowerCase()] ?? DEFAULT_COLORS;
 }
 
 const PROFICIENCY_DOTS: Record<string, number> = {

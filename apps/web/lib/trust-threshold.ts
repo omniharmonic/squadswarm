@@ -10,8 +10,10 @@ export const TRUST_THRESHOLDS: Record<string, { minScore: number; label: string;
   elite: { minScore: 75, label: 'Elite', description: 'Requires top-tier reputation (trust score >= 75)' },
 };
 
+const DEFAULT_THRESHOLD = TRUST_THRESHOLDS.open!;
+
 export function meetsThreshold(squadTrustScore: number, threshold: string): boolean {
-  const config = TRUST_THRESHOLDS[threshold] || TRUST_THRESHOLDS.open;
+  const config = TRUST_THRESHOLDS[threshold] ?? DEFAULT_THRESHOLD;
   return squadTrustScore >= config.minScore;
 }
 
@@ -20,7 +22,7 @@ export function getThresholdGap(squadTrustScore: number, threshold: string): {
   gap: number;
   required: number;
 } {
-  const config = TRUST_THRESHOLDS[threshold] || TRUST_THRESHOLDS.open;
+  const config = TRUST_THRESHOLDS[threshold] ?? DEFAULT_THRESHOLD;
   return {
     meets: squadTrustScore >= config.minScore,
     gap: Math.max(0, config.minScore - squadTrustScore),
