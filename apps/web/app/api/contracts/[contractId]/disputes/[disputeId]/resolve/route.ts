@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { db, contracts, disputes, squadMembers } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { resolveDispute } from '@/lib/dispute-service';
+
+const VALID_RESOLUTIONS = ['full_client', 'full_squad', 'split', 'negotiated'] as const;
 
 export async function POST(
   req: NextRequest,
@@ -29,9 +32,10 @@ export async function POST(
     );
   }
 
-  // Auth check: client or squad member
+  // Auth check: only client can resolve (they initiated the contract)
   const isClient = contract.clientId === session.userId;
   if (!isClient) {
+    // Also allow squad admins to resolve
     const [membership] = await db
       .select()
       .from(squadMembers)
@@ -64,41 +68,63 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { resolution, clientPercentage, squadPercentage } = body;
+  const { resolution, clientPercentage, squadPercentage, reason, txHash } = body;
 
-  if (!resolution || typeof resolution !== 'string' || resolution.trim().length === 0) {
-    return NextResponse.json({ error: 'Resolution is required' }, { status: 400 });
+  // Determine resolution type and reason text
+  // New format: { resolution: 'split', reason: 'text' }
+  // Old format: { resolution: 'text describing resolution' } (backward compat)
+  let resolvedType: typeof VALID_RESOLUTIONS[number];
+  let resolutionReason: string;
+
+  if (VALID_RESOLUTIONS.includes(resolution)) {
+    resolvedType = resolution;
+    resolutionReason = reason || '';
+  } else if (typeof resolution === 'string' && resolution.trim().length > 0) {
+    // Backward compat: resolution field contains the reason text
+    resolvedType = clientPercentage === 100 ? 'full_client' : squadPercentage === 100 ? 'full_squad' : clientPercentage === 50 ? 'split' : 'negotiated';
+    resolutionReason = resolution;
+  } else {
+    return NextResponse.json(
+      { error: `Resolution must be one of: ${VALID_RESOLUTIONS.join(', ')}` },
+      { status: 400 },
+    );
+  }
+
+  if (!resolutionReason || typeof resolutionReason !== 'string' || resolutionReason.trim().length === 0) {
+    return NextResponse.json({ error: 'Reason is required' }, { status: 400 });
   }
 
   if (typeof clientPercentage !== 'number' || typeof squadPercentage !== 'number') {
     return NextResponse.json({ error: 'clientPercentage and squadPercentage are required' }, { status: 400 });
   }
 
+  if (clientPercentage < 0 || squadPercentage < 0 || clientPercentage > 100 || squadPercentage > 100) {
+    return NextResponse.json({ error: 'Percentages must be between 0 and 100' }, { status: 400 });
+  }
+
   if (clientPercentage + squadPercentage !== 100) {
     return NextResponse.json({ error: 'clientPercentage + squadPercentage must equal 100' }, { status: 400 });
   }
 
-  // Update dispute
-  const [updatedDispute] = await db
-    .update(disputes)
-    .set({
-      status: 'resolved',
-      resolution: { text: resolution.trim(), clientPercentage, squadPercentage },
-      updatedAt: new Date(),
-    })
-    .where(eq(disputes.id, disputeId))
-    .returning();
+  if (txHash && typeof txHash !== 'string') {
+    return NextResponse.json({ error: 'txHash must be a string' }, { status: 400 });
+  }
 
-  // Update contract status to completed and store dispute split
-  await db
-    .update(contracts)
-    .set({
-      status: 'completed',
-      completedAt: new Date(),
-      disputeSplit: { clientPercentage, squadPercentage },
-      updatedAt: new Date(),
-    })
-    .where(eq(contracts.id, contractId));
+  try {
+    const updatedDispute = await resolveDispute({
+      disputeId,
+      contractId,
+      resolvedByUserId: session.userId,
+      resolution: resolvedType,
+      clientPercentage,
+      squadPercentage,
+      reason: resolutionReason.trim(),
+      txHash: txHash || undefined,
+    });
 
-  return NextResponse.json(updatedDispute);
+    return NextResponse.json(updatedDispute);
+  } catch (err) {
+    console.error('Failed to resolve dispute:', err);
+    return NextResponse.json({ error: 'Failed to resolve dispute' }, { status: 500 });
+  }
 }

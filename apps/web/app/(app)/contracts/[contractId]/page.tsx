@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useWeb3 } from '@/components/web3-provider';
 import { type Address, type Hex } from 'viem';
-import { SQUAD_SWARM_ESCROW_ABI, generateContractId, toUSDC } from '@squadswarm/web3';
+import { SQUAD_SWARM_ESCROW_ABI, PAYMENT_SPLITTER_ABI, generateContractId, toUSDC } from '@squadswarm/web3';
 
 /* ── Rating types & helpers ─────────────────────────────────── */
 interface Rating {
@@ -195,6 +195,26 @@ export default function ContractOverviewPage() {
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError, setRatingError] = useState('');
 
+  // Payment distribution state
+  interface DistributionMember {
+    userId?: string;
+    agentId?: string;
+    displayName: string;
+    walletAddress: string | null;
+    role: string;
+    shareBps: number;
+    sharePercent: number;
+    estimatedAmount: string;
+  }
+  const [distributionMembers, setDistributionMembers] = useState<DistributionMember[]>([]);
+  const [distributionLoaded, setDistributionLoaded] = useState(false);
+  const [distributionTxHash, setDistributionTxHash] = useState<string | null>(null);
+  const [distributing, setDistributing] = useState(false);
+  const [distributeError, setDistributeError] = useState('');
+  const [showDistributeConfirm, setShowDistributeConfirm] = useState(false);
+  const [distributionTotalAmount, setDistributionTotalAmount] = useState('');
+  const [treasurySharePercent, setTreasurySharePercent] = useState(0);
+
   const fetchRating = useCallback(async () => {
     try {
       const res = await fetch(`/api/contracts/${contractId}/rate`);
@@ -218,6 +238,96 @@ export default function ContractOverviewPage() {
       // ignore
     }
   }, [contractId]);
+
+  const fetchDistribution = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/distribution`);
+      if (res.ok) {
+        const data = await res.json();
+        setDistributionMembers(data.members || []);
+        setDistributionTxHash(data.txHash || null);
+        setDistributionTotalAmount(data.totalAmount || '');
+        setTreasurySharePercent(data.treasurySharePercent || 0);
+        setDistributionLoaded(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, [contractId]);
+
+  async function handleDistribute() {
+    if (!walletClient || !address) {
+      try {
+        const addr = await connect();
+        if (!addr) return;
+      } catch {
+        return;
+      }
+    }
+
+    setDistributing(true);
+    setDistributeError('');
+    try {
+      // Step 1: Get the distribution preparation data
+      const prepRes = await fetch(`/api/contracts/${contractId}/distribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      if (!prepRes.ok) {
+        const err = await prepRes.json();
+        setDistributeError(err.error || 'Failed to prepare distribution');
+        return;
+      }
+
+      const prepData = await prepRes.json();
+      const splitterAddr = prepData.contractAddress as Address;
+      const tokenAddr = prepData.args[0] as Address;
+
+      // Step 2: Call PaymentSplitter.distribute(token) on-chain
+      setDistributeError('Distributing payments on-chain...');
+      const distributeTx = await walletClient!.writeContract({
+        account: address!,
+        chain: walletClient!.chain!,
+        address: splitterAddr,
+        abi: PAYMENT_SPLITTER_ABI,
+        functionName: 'distribute',
+        args: [tokenAddr],
+      });
+
+      // Wait for confirmation
+      setDistributeError('Waiting for confirmation...');
+      const { createPublicClient: cpc, http: httpT } = await import('viem');
+      const pc = cpc({
+        chain: walletClient!.chain!,
+        transport: httpT(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://sepolia.base.org'),
+      });
+      await pc.waitForTransactionReceipt({ hash: distributeTx });
+
+      // Step 3: Record the tx hash on server
+      const recordRes = await fetch(`/api/contracts/${contractId}/distribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHash: distributeTx }),
+      });
+
+      if (recordRes.ok) {
+        setDistributionTxHash(distributeTx);
+        setDistributeError('');
+        setShowDistributeConfirm(false);
+        toast.success('Payments distributed successfully!');
+      } else {
+        const err = await recordRes.json();
+        setDistributeError(err.error || 'Failed to record distribution');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Distribution failed';
+      setDistributeError(msg);
+    } finally {
+      setDistributing(false);
+    }
+  }
 
   async function handleAddLink() {
     if (!newLinkLabel.trim() || !newLinkUrl.trim()) return;
@@ -361,8 +471,9 @@ export default function ContractOverviewPage() {
     fetchRating();
     fetchCollabLinks();
     fetchPaymentMilestones();
+    fetchDistribution();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractId, fetchRating, fetchCollabLinks, fetchPaymentMilestones]);
+  }, [contractId, fetchRating, fetchCollabLinks, fetchPaymentMilestones, fetchDistribution]);
 
   async function handleFundContract() {
     if (!walletClient || !address) {
@@ -749,7 +860,8 @@ export default function ContractOverviewPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          resolution: resolutionText.trim(),
+          resolution: clientPct === 100 ? 'full_client' : squadPct === 100 ? 'full_squad' : clientPct === 50 ? 'split' : 'negotiated',
+          reason: resolutionText.trim(),
           clientPercentage: clientPct,
           squadPercentage: squadPct,
         }),
@@ -1077,6 +1189,29 @@ export default function ContractOverviewPage() {
         )}
       </div>
 
+      {/* Dispute warning banner */}
+      {contract.status === 'disputed' && (
+        <Link
+          href={`/contracts/${contractId}/dispute`}
+          className="block bg-warning/10 border-2 border-warning/30 rounded-xl p-4 mb-6 hover:bg-warning/15 transition-colors"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-warning shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3l9.66 16.59A1 1 0 0120.66 21H3.34a1 1 0 01-.86-1.41L12 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-warning">Active Dispute — Payments Paused</p>
+                <p className="text-xs text-text-secondary mt-0.5">Click to view dispute details and resolve</p>
+              </div>
+            </div>
+            <svg className="w-4 h-4 text-warning shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </Link>
+      )}
+
       {/* Complete Contract — shown when all deliverables approved and contract is active */}
       {(contract.status === 'in_review' || (contract.status === 'active' && allApproved && totalCount > 0)) && (
         <div className="bg-success/5 rounded-xl border-2 border-success/30 p-5 mb-6">
@@ -1119,6 +1254,165 @@ export default function ContractOverviewPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Payment Distribution */}
+      {distributionLoaded && distributionMembers.length > 0 && (contract.status === 'active' || contract.status === 'completed') && (
+        <div className="bg-white rounded-xl border border-border p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+              Payment Distribution
+            </h2>
+            {distributionTxHash && (
+              <a
+                href={`https://sepolia.basescan.org/tx/${distributionTxHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-success/10 text-success rounded-full text-xs font-medium hover:bg-success/20 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Distributed
+              </a>
+            )}
+          </div>
+
+          {/* Member breakdown table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-text-secondary uppercase">Member</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-text-secondary uppercase">Role</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-text-secondary uppercase">Share</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-text-secondary uppercase">Amount</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-text-secondary uppercase">Wallet</th>
+                </tr>
+              </thead>
+              <tbody>
+                {distributionMembers.map((member, i) => (
+                  <tr key={`${member.userId || member.agentId || i}`} className="border-b border-border-light last:border-0">
+                    <td className="py-2.5 px-3">
+                      <span className="font-medium text-text-primary">{member.displayName}</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        member.role === 'agent' ? 'bg-accent-agent/10 text-accent-agent' : 'bg-accent-squad/10 text-accent-squad'
+                      }`}>
+                        {member.role}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-medium text-text-primary">
+                      {member.sharePercent}%
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-medium text-text-primary">
+                      {member.estimatedAmount}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {member.walletAddress ? (
+                        <code className="text-xs font-mono text-text-secondary">
+                          {member.walletAddress.slice(0, 6)}...{member.walletAddress.slice(-4)}
+                        </code>
+                      ) : (
+                        <span className="text-xs text-warning">No wallet</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {treasurySharePercent > 0 && (
+                  <tr className="border-b border-border-light">
+                    <td className="py-2.5 px-3">
+                      <span className="font-medium text-text-primary">Squad Treasury</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-escrow/10 text-escrow">treasury</span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-medium text-text-primary">
+                      {treasurySharePercent}%
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-medium text-text-primary">
+                      ${(parseFloat(contract.totalAmount) * treasurySharePercent / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="text-xs text-text-secondary">Squad multisig</span>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Total */}
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+            <span className="text-sm font-semibold text-text-primary">Total</span>
+            <span className="text-sm font-bold text-text-primary">{distributionTotalAmount}</span>
+          </div>
+
+          {/* Distribute button */}
+          {!distributionTxHash && isConnected && (
+            <div className="mt-4">
+              {!showDistributeConfirm ? (
+                <button
+                  onClick={() => setShowDistributeConfirm(true)}
+                  className="px-5 py-2.5 bg-accent-agent text-white rounded-xl text-sm font-medium hover:bg-accent-agent-hover transition-colors"
+                >
+                  Distribute Payments
+                </button>
+              ) : (
+                <div className="bg-accent-agent/5 rounded-lg p-4 border border-accent-agent/20">
+                  <p className="text-sm font-medium text-accent-agent mb-2">Confirm Distribution</p>
+                  <p className="text-sm text-text-secondary mb-3">
+                    This will call the PaymentSplitter contract to distribute {distributionTotalAmount} USDC to all members based on their shares.
+                  </p>
+                  {distributeError && <p className="text-xs text-error mb-2">{distributeError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowDistributeConfirm(false); setDistributeError(''); }}
+                      className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDistribute}
+                      disabled={distributing}
+                      className="px-5 py-2.5 bg-accent-agent text-white rounded-xl text-sm font-medium hover:bg-accent-agent-hover disabled:opacity-50 transition-colors"
+                    >
+                      {distributing ? 'Distributing...' : 'Confirm Distribution'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!distributionTxHash && !isConnected && (
+            <div className="mt-4">
+              <button
+                onClick={connect}
+                disabled={connecting}
+                className="px-5 py-2.5 bg-accent-agent text-white rounded-xl text-sm font-medium hover:bg-accent-agent-hover disabled:opacity-50 transition-colors"
+              >
+                {connecting ? 'Connecting...' : 'Connect Wallet to Distribute'}
+              </button>
+            </div>
+          )}
+
+          {distributionTxHash && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
+              <svg className="w-4 h-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>Distributed on-chain</span>
+              <a
+                href={`https://sepolia.basescan.org/tx/${distributionTxHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent-agent hover:underline"
+              >
+                {distributionTxHash.slice(0, 10)}...{distributionTxHash.slice(-6)}
+              </a>
+            </div>
+          )}
         </div>
       )}
 
@@ -1235,12 +1529,20 @@ export default function ContractOverviewPage() {
               <p className="text-sm text-text-secondary mt-0.5">If there is an issue, raise a dispute to pause work and begin resolution.</p>
             </div>
             {!showDisputeForm && (
-              <button
-                onClick={() => setShowDisputeForm(true)}
-                className="px-4 py-2 border border-warning text-warning rounded-lg text-sm font-medium hover:bg-warning/5 transition-colors"
-              >
-                Raise Dispute
-              </button>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/contracts/${contractId}/dispute`}
+                  className="px-4 py-2 text-text-secondary hover:text-text-primary text-sm transition-colors"
+                >
+                  Dispute Details
+                </Link>
+                <button
+                  onClick={() => setShowDisputeForm(true)}
+                  className="px-4 py-2 border border-warning text-warning rounded-lg text-sm font-medium hover:bg-warning/5 transition-colors"
+                >
+                  Raise Dispute
+                </button>
+              </div>
             )}
           </div>
           {showDisputeForm && (

@@ -109,6 +109,16 @@ export async function POST(
     releasedAt: new Date().toISOString(),
   });
 
+  // Check if all approved deliverables now have milestone releases
+  const releasedDeliverableIds = new Set(
+    milestoneReleases.map((r: Record<string, unknown>) => r.deliverableId as string),
+  );
+  const approvedDeliverables = allDeliverables.filter(d => d.status === 'approved');
+  const allMilestonesReleased =
+    approvedDeliverables.length > 0 &&
+    approvedDeliverables.length === allDeliverables.length &&
+    approvedDeliverables.every(d => releasedDeliverableIds.has(d.id));
+
   await db
     .update(contracts)
     .set({
@@ -116,6 +126,7 @@ export async function POST(
       paymentSchedule: {
         ...existingSchedule,
         milestoneReleases,
+        ...(allMilestonesReleased ? { allMilestonesReleased: true } : {}),
       },
     })
     .where(eq(contracts.id, contractId));
