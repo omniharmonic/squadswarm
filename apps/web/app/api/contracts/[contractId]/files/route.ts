@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc } from 'drizzle-orm';
 import { db, contracts, files, squadMembers, users } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
-import { getSupabaseAdmin, BUCKETS } from '@/lib/supabase';
+import { uploadToBlob } from '@/lib/blob-storage';
 
 async function checkAccess(contractId: string, userId: string) {
   const [contract] = await db
@@ -92,24 +92,17 @@ export async function POST(
   const file = formData.get('file') as File | null;
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
 
-  const supabase = getSupabaseAdmin();
-  const timestamp = Date.now();
-  const storagePath = `${contractId}/${timestamp}_${file.name}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKETS.DELIVERABLE_FILES)
-    .upload(storagePath, file, { upsert: false });
-
-  if (uploadError) {
-    return NextResponse.json({ error: 'Upload failed', details: uploadError.message }, { status: 500 });
+  let fileUrl: string;
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const { url } = await uploadToBlob(file.name, buffer, file.type || 'application/octet-stream');
+    fileUrl = url;
+  } catch (uploadError) {
+    return NextResponse.json(
+      { error: 'Upload failed', details: uploadError instanceof Error ? uploadError.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
-
-  // Get public URL
-  const { data: urlData } = supabase.storage
-    .from(BUCKETS.DELIVERABLE_FILES)
-    .getPublicUrl(storagePath);
-
-  const fileUrl = urlData.publicUrl;
 
   const [inserted] = await db
     .insert(files)

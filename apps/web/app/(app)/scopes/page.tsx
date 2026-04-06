@@ -235,6 +235,8 @@ export default function ScopeBoardPage() {
   const [loading, setLoading] = useState(true);
   const [recommended, setRecommended] = useState<RecommendedScope[]>([]);
   const [userSquads, setUserSquads] = useState<UserSquadInfo[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/scopes')
@@ -283,6 +285,27 @@ export default function ScopeBoardPage() {
       .catch(() => {});
   }, []);
 
+  // Extract all unique tags from both real and mock scopes
+  const allScopes = [...realScopes, ...mockScopes];
+  const allTags = [...new Set(allScopes.flatMap(s => s.categoryTags || []))].sort();
+
+  // Filter scopes based on search query and selected tag
+  const filterScope = (scope: ScopeItem) => {
+    const matchesSearch = !searchQuery ||
+      scope.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      scope.narrative?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesTag = !selectedTag ||
+      (scope.categoryTags || []).includes(selectedTag);
+
+    return matchesSearch && matchesTag;
+  };
+
+  const filteredRealScopes = realScopes.filter(filterScope);
+  const filteredMockScopes = mockScopes.filter(filterScope);
+  const totalFiltered = filteredRealScopes.length + filteredMockScopes.length;
+  const isFiltering = !!searchQuery || !!selectedTag;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -300,6 +323,45 @@ export default function ScopeBoardPage() {
           Submit a Scope
         </Link>
       </div>
+
+      {/* Search and Filter Bar */}
+      <div className="bg-white rounded-2xl border border-border p-4 mb-6">
+        <input
+          type="text"
+          placeholder="Search scopes by title or description..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="w-full px-4 py-2.5 border border-border rounded-xl bg-bg-primary text-sm focus:ring-2 focus:ring-accent-agent/40 focus:outline-none"
+        />
+
+        {/* Category tag pills */}
+        {allTags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {allTags.map(tag => (
+              <button
+                key={tag}
+                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  selectedTag === tag
+                    ? 'bg-accent-squad text-white border-accent-squad'
+                    : 'bg-bg-secondary text-text-secondary border-border hover:border-accent-agent/40'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Result count when filtering */}
+      {isFiltering && (
+        <p className="text-sm text-text-muted mb-4">
+          {totalFiltered} scope{totalFiltered !== 1 ? 's' : ''} found
+          {searchQuery && ` for "${searchQuery}"`}
+          {selectedTag && ` tagged "${selectedTag}"`}
+        </p>
+      )}
 
       {/* Recommended for Your Squads */}
       {recommended.length > 0 && (
@@ -346,18 +408,18 @@ export default function ScopeBoardPage() {
       ) : (
         <>
           {/* Real scopes */}
-          {realScopes.length > 0 && (
+          {filteredRealScopes.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {realScopes.map((scope) => (
+              {filteredRealScopes.map((scope) => (
                 <ScopeCard key={scope.id} scope={scope} userSquads={userSquads} />
               ))}
             </div>
           )}
 
           {/* Example scopes divider + cards */}
-          {mockScopes.length > 0 && (
+          {filteredMockScopes.length > 0 && (
             <>
-              {realScopes.length > 0 && (
+              {filteredRealScopes.length > 0 && (
                 <div className="flex items-center gap-3 my-8">
                   <div className="flex-1 h-px bg-border" />
                   <span className="text-xs text-text-secondary font-medium uppercase tracking-wider">
@@ -367,11 +429,24 @@ export default function ScopeBoardPage() {
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {mockScopes.map((scope) => (
+                {filteredMockScopes.map((scope) => (
                   <ScopeCard key={scope.id} scope={scope} userSquads={userSquads} />
                 ))}
               </div>
             </>
+          )}
+
+          {/* No results message */}
+          {isFiltering && totalFiltered === 0 && (
+            <div className="text-center py-12">
+              <p className="text-text-secondary">No scopes match your search.</p>
+              <button
+                onClick={() => { setSearchQuery(''); setSelectedTag(null); }}
+                className="mt-2 text-sm text-accent-agent hover:text-accent-agent-hover transition-colors"
+              >
+                Clear filters
+              </button>
+            </div>
           )}
         </>
       )}

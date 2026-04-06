@@ -818,10 +818,10 @@ export default function BidCollaboratePage() {
 
       // Also figure out current user id from session check
       try {
-        const meRes = await fetch('/api/me');
+        const meRes = await fetch('/api/auth/session');
         if (meRes.ok) {
           const me = await meRes.json();
-          setCurrentUserId(me.userId || me.id || '');
+          setCurrentUserId(me.user?.id || '');
         }
       } catch { /* ignore */ }
 

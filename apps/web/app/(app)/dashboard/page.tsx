@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { OnboardingChecklist } from '@/components/onboarding-checklist';
 
 interface Squad {
   id: string;
@@ -235,6 +236,23 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold">Welcome back</h1>
         <p className="text-text-secondary mt-1">Here&apos;s what&apos;s happening across your squads.</p>
       </div>
+
+      {/* Onboarding Checklist */}
+      {!isLoading && (() => {
+        const hasSquad = squads.length > 0;
+        const hasProposal = proposals.length > 0;
+        const hasBid = pendingVotes.length > 0 || activeContracts.length > 0;
+        const hasContract = activeContracts.length > 0;
+        const completedSteps = [hasSquad, hasProposal, hasBid, hasContract].filter(Boolean).length;
+        return completedSteps < 3 ? (
+          <OnboardingChecklist
+            hasSquad={hasSquad}
+            hasProposal={hasProposal}
+            hasBid={hasBid}
+            hasContract={hasContract}
+          />
+        ) : null;
+      })()}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

@@ -2,9 +2,10 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc } from 'drizzle-orm';
-import { db, contracts, agentActionQueue, agents, squadMembers, deliverables, notifications } from '@squadswarm/db';
+import { db, contracts, agentActionQueue, agents, squadMembers, deliverables } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 import { jwtVerify } from 'jose';
+import { notifyMany } from '@/lib/notify';
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret-change-me');
 
@@ -229,14 +230,16 @@ export async function POST(
 
   const actionDesc = describeAction(actionType, actionPayload || null);
 
-  for (const admin of admins) {
-    await db.insert(notifications).values({
-      userId: admin.userId,
-      type: 'agent_action_pending',
-      title: `Agent "${agentInfo?.name || 'Unknown'}" requests approval`,
-      body: actionDesc,
-      metadata: { contractId, agentId, actionId: entry.id, actionType },
-    });
+  if (admins.length > 0) {
+    await notifyMany(
+      admins.map(a => a.userId),
+      {
+        type: 'agent_action_pending',
+        title: `Agent "${agentInfo?.name || 'Unknown'}" requests approval`,
+        body: actionDesc,
+        metadata: { contractId, agentId, actionId: entry.id, actionType },
+      }
+    );
   }
 
   return NextResponse.json(entry, { status: 201 });

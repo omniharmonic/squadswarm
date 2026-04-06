@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyMessage, getAddress } from 'viem';
+import { recoverMessageAddress, getAddress } from 'viem';
 import { db, users } from '@squadswarm/db';
 import { eq } from 'drizzle-orm';
 import { createSession, getSession, setSessionCookie } from '@/lib/auth';
@@ -32,14 +32,30 @@ export async function POST(req: NextRequest) {
 
     // Extract and checksum the address
     const rawAddress = extractAddress(message);
-    const checksumAddress = getAddress(rawAddress);
+    const expectedAddress = getAddress(rawAddress);
 
-    // Verify the signature
-    const valid = await verifyMessage({
-      message,
-      signature: signature as `0x${string}`,
-      address: checksumAddress,
-    });
+    // Verify the signature by recovering the signer address
+    let valid = false;
+    try {
+      const recoveredAddress = await recoverMessageAddress({
+        message,
+        signature: signature as `0x${string}`,
+      });
+      valid =
+        recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
+    } catch (verifyError) {
+      console.error('SIWE signature verification error:', verifyError);
+      return NextResponse.json(
+        {
+          error: 'Signature verification failed',
+          detail:
+            verifyError instanceof Error
+              ? verifyError.message
+              : 'Unknown',
+        },
+        { status: 401 },
+      );
+    }
 
     if (!valid) {
       return NextResponse.json(
@@ -47,6 +63,8 @@ export async function POST(req: NextRequest) {
         { status: 401 },
       );
     }
+
+    const checksumAddress = expectedAddress;
 
     const walletAddress = checksumAddress.toLowerCase();
     const session = await getSession();

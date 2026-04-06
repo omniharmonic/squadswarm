@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
-import { db, disputes, contracts, activityLog, notifications, attestations, squadMembers } from '@squadswarm/db';
+import { db, disputes, contracts, activityLog, attestations, squadMembers } from '@squadswarm/db';
+import { notifyMany } from './notify';
 
 interface ResolveDisputeInput {
   disputeId: string;
@@ -113,22 +114,19 @@ export async function resolveDispute(input: ResolveDisputeInput) {
     // Deduplicate (in case resolvedByUserId is also a member)
     const uniqueRecipients = [...new Set(recipientIds)];
 
-    const notifValues = uniqueRecipients.map((userId) => ({
-      userId,
-      type: 'dispute_resolved',
-      title: 'Dispute Resolved',
-      body: `Dispute on "${contract.title}" has been resolved: ${clientPercentage}% to client, ${squadPercentage}% to squad.`,
-      metadata: {
-        contractId,
-        disputeId,
-        resolution,
-        clientPercentage,
-        squadPercentage,
-      },
-    }));
-
-    if (notifValues.length > 0) {
-      await db.insert(notifications).values(notifValues);
+    if (uniqueRecipients.length > 0) {
+      await notifyMany(uniqueRecipients, {
+        type: 'dispute_resolved',
+        title: 'Dispute Resolved',
+        body: `Dispute on "${contract.title}" has been resolved: ${clientPercentage}% to client, ${squadPercentage}% to squad.`,
+        metadata: {
+          contractId,
+          disputeId,
+          resolution,
+          clientPercentage,
+          squadPercentage,
+        },
+      });
     }
   }
 

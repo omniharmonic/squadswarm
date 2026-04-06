@@ -2,9 +2,10 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, ne } from 'drizzle-orm';
-import { db, bids, bidClaims, scopes, squadMembers, users, agents, notifications } from '@squadswarm/db';
+import { db, bids, bidClaims, scopes, squadMembers, users, agents } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 import { getAgentSession } from '@/lib/agent-auth';
+import { notifyMany } from '@/lib/notify';
 
 interface WorkPlanDeliverable {
   title: string;
@@ -413,9 +414,9 @@ export async function POST(
 
       const claimantName = claimant?.displayName || 'A squad member';
 
-      await db.insert(notifications).values(
-        otherMembers.map(m => ({
-          userId: m.userId,
+      await notifyMany(
+        otherMembers.map(m => m.userId),
+        {
           type: 'deliverable_claimed',
           title: otherActiveClaims.length > 0
             ? 'Deliverable claim contested!'
@@ -429,7 +430,7 @@ export async function POST(
             deliverableKey: String(deliverableKey),
             claimId: claim.id,
           },
-        }))
+        }
       );
     }
 

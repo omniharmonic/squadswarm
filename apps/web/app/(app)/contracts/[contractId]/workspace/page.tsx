@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { DndContext, DragOverlay, closestCorners, useDroppable, useDraggable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 
 // ── Types ──
 
@@ -202,11 +204,14 @@ export default function WorkspacePage() {
 
 // ── Board View (Kanban) ──
 
+type DeliverableWithWorkstream = Deliverable & { workstream: string };
+
 function BoardView({ contractId }: { contractId: string }) {
   const [board, setBoard] = useState<BoardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchBoard = useCallback(() => {
     fetch(`/api/contracts/${contractId}/board`)
       .then(r => r.json())
       .then(d => { if (!d.error) setBoard(d); })
@@ -214,16 +219,63 @@ function BoardView({ contractId }: { contractId: string }) {
       .finally(() => setLoading(false));
   }, [contractId]);
 
+  useEffect(() => { fetchBoard(); }, [fetchBoard]);
+
   if (loading) return <LoadingSpinner />;
   if (!board) return <EmptyState message="Could not load board data" />;
 
   // Group all deliverables by status
-  const allDeliverables = board.workstreams.flatMap(ws =>
+  const allDeliverables: DeliverableWithWorkstream[] = board.workstreams.flatMap(ws =>
     ws.deliverables.map(d => ({ ...d, workstream: ws.title }))
   );
   const columns = COLUMN_ORDER.filter(col =>
     allDeliverables.some(d => d.status === col) || ['not_started', 'in_progress', 'in_review', 'approved'].includes(col)
   );
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(event.active.id as string);
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over) return;
+
+    const deliverableId = active.id as string;
+    const newStatus = over.id as string;
+    const deliverable = allDeliverables.find(d => d.id === deliverableId);
+    if (!deliverable || deliverable.status === newStatus) return;
+
+    // Optimistic update
+    setBoard(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        workstreams: prev.workstreams.map(ws => ({
+          ...ws,
+          deliverables: ws.deliverables.map(d =>
+            d.id === deliverableId ? { ...d, status: newStatus } : d
+          ),
+        })),
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/deliverables/${deliverableId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        // Revert on failure
+        fetchBoard();
+      }
+    } catch {
+      fetchBoard();
+    }
+  }
+
+  const activeDeliverable = activeId ? allDeliverables.find(d => d.id === activeId) : null;
 
   return (
     <div>
@@ -242,59 +294,141 @@ function BoardView({ contractId }: { contractId: string }) {
         ))}
       </div>
 
-      {/* Kanban columns */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {columns.map(col => {
-          const items = allDeliverables.filter(d => d.status === col);
-          return (
-            <div key={col} className="flex-shrink-0 w-72">
-              <div className="flex items-center gap-2 mb-3">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[col] || ''}`}>
-                  {STATUS_LABELS[col] || col}
-                </span>
-                <span className="text-xs text-text-muted">{items.length}</span>
-              </div>
-              <div className="space-y-3">
+      {/* Kanban columns with DnD */}
+      <DndContext
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {columns.map(col => {
+            const items = allDeliverables.filter(d => d.status === col);
+            return (
+              <DroppableColumn key={col} id={col} title={STATUS_LABELS[col] || col} count={items.length} statusColor={STATUS_COLORS[col] || ''}>
                 {items.map(d => (
-                  <div key={d.id} className="bg-white rounded-xl border border-border p-4 hover:shadow-sm transition-shadow">
-                    <div className="text-sm font-medium mb-2">{d.title}</div>
-                    <div className="text-xs text-text-secondary mb-2">{d.workstream}</div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        {d.assignedAgent ? (
-                          <span className="inline-flex items-center gap-1 text-xs bg-accent-agent/10 text-accent-agent px-1.5 py-0.5 rounded-full">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                            {d.assignedAgent.name}
-                          </span>
-                        ) : d.assignedMember ? (
-                          <span className="text-xs text-text-secondary">
-                            {d.assignedMember.displayName}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-text-muted italic">Unassigned</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-text-muted">
-                        {d.estimatedEffortHours && <span>{d.estimatedEffortHours}h</span>}
-                        {d.fileCount > 0 && (
-                          <span className="flex items-center gap-0.5">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                            {d.fileCount}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <DraggableCard key={d.id} deliverable={d} />
                 ))}
-                {items.length === 0 && (
-                  <div className="text-xs text-text-muted text-center py-8 border border-dashed border-border rounded-xl">
-                    No items
-                  </div>
-                )}
-              </div>
+              </DroppableColumn>
+            );
+          })}
+        </div>
+        <DragOverlay>
+          {activeDeliverable ? <DeliverableCard deliverable={activeDeliverable} isDragOverlay /> : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  );
+}
+
+// ── Droppable Column ──
+
+function DroppableColumn({
+  id,
+  title,
+  count,
+  statusColor,
+  children,
+}: {
+  id: string;
+  title: string;
+  count: number;
+  statusColor: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div ref={setNodeRef} className="flex-shrink-0 w-72">
+      <div className="flex items-center gap-2 mb-3">
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor}`}>
+          {title}
+        </span>
+        <span className="text-xs text-text-muted">{count}</span>
+      </div>
+      <div
+        className={`min-h-[200px] p-3 rounded-xl border transition-colors ${
+          isOver
+            ? 'border-accent-squad/40 bg-accent-squad/5 border-dashed'
+            : 'border-border bg-bg-secondary/50'
+        }`}
+      >
+        <div className="space-y-3">
+          {children}
+          {count === 0 && !isOver && (
+            <div className="text-xs text-text-muted text-center py-8">
+              No items
             </div>
-          );
-        })}
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Draggable Card ──
+
+function DraggableCard({ deliverable }: { deliverable: DeliverableWithWorkstream }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: deliverable.id,
+  });
+  const style = transform
+    ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
+    : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`transition-opacity ${isDragging ? 'opacity-30' : ''}`}
+    >
+      <DeliverableCard deliverable={deliverable} />
+    </div>
+  );
+}
+
+// ── Deliverable Card (shared between draggable and overlay) ──
+
+function DeliverableCard({
+  deliverable: d,
+  isDragOverlay = false,
+}: {
+  deliverable: DeliverableWithWorkstream;
+  isDragOverlay?: boolean;
+}) {
+  return (
+    <div
+      className={`bg-white rounded-xl border border-border p-4 cursor-grab active:cursor-grabbing transition-shadow ${
+        isDragOverlay ? 'shadow-lg rotate-2' : 'hover:shadow-sm'
+      }`}
+    >
+      <div className="text-sm font-medium mb-2">{d.title}</div>
+      <div className="text-xs text-text-secondary mb-2">{d.workstream}</div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          {d.assignedAgent ? (
+            <span className="inline-flex items-center gap-1 text-xs bg-accent-agent/10 text-accent-agent px-1.5 py-0.5 rounded-full">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+              {d.assignedAgent.name}
+            </span>
+          ) : d.assignedMember ? (
+            <span className="text-xs text-text-secondary">
+              {d.assignedMember.displayName}
+            </span>
+          ) : (
+            <span className="text-xs text-text-muted italic">Unassigned</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-text-muted">
+          {d.estimatedEffortHours && <span>{d.estimatedEffortHours}h</span>}
+          {d.fileCount > 0 && (
+            <span className="flex items-center gap-0.5">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+              {d.fileCount}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

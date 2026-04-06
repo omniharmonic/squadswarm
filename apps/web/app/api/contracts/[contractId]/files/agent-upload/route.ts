@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, contracts, files, activityLog } from '@squadswarm/db';
 import { getAgentSession } from '@/lib/agent-auth';
+import { uploadToBlob } from '@/lib/blob-storage';
 
 /**
  * Agent file upload endpoint.
@@ -80,17 +81,23 @@ export async function POST(
   };
   const fileType = mimeTypes[ext] || 'application/octet-stream';
 
-  // For now, store the content as a data URI since we don't have direct
-  // Supabase access from agent uploads. The content is stored inline.
-  // In production, this would upload to object storage.
+  // Detect if content is base64-encoded
   const isBase64 = /^[A-Za-z0-9+/=]+$/.test(content.slice(0, 100)) && content.length > 100;
-  const dataUri = isBase64
-    ? `data:${fileType};base64,${content}`
-    : `data:${fileType};base64,${Buffer.from(content, 'utf-8').toString('base64')}`;
+  const buffer = isBase64
+    ? Buffer.from(content, 'base64')
+    : Buffer.from(content, 'utf-8');
+  const fileSizeBytes = buffer.length;
 
-  const fileSizeBytes = isBase64
-    ? Math.floor(content.length * 0.75)
-    : Buffer.byteLength(content, 'utf-8');
+  let fileUrl: string;
+  try {
+    const { url } = await uploadToBlob(fileName, buffer, fileType);
+    fileUrl = url;
+  } catch (uploadError) {
+    return NextResponse.json(
+      { error: 'Upload failed', details: uploadError instanceof Error ? uploadError.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
 
   const [inserted] = await db
     .insert(files)
@@ -99,7 +106,7 @@ export async function POST(
       deliverableId: deliverableId || null,
       fileName,
       fileType,
-      fileUrl: dataUri,
+      fileUrl,
       fileSizeBytes,
       uploadedByAgentId: agentSession.agentId,
       isFinalSubmission: isFinal || false,

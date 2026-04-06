@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, ne } from 'drizzle-orm';
-import { db, bids, bidAssignments, squads, squadMembers, users, notifications } from '@squadswarm/db';
+import { db, bids, bidAssignments, squads, squadMembers, users } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { notifyMany } from '@/lib/notify';
 
 interface GovernanceModel {
   type: 'consent' | 'majority' | 'delegated';
@@ -161,9 +162,9 @@ export async function POST(
     const submitterName = submitter?.displayName || 'A squad member';
 
     if (members.length > 0) {
-      await db.insert(notifications).values(
-        members.map((m) => ({
-          userId: m.userId,
+      await notifyMany(
+        members.map((m) => m.userId),
+        {
           type: 'bid_review_requested',
           title: 'Bid submitted for review',
           body: `${submitterName} submitted a bid for governance review. Your vote is needed.`,
@@ -172,7 +173,7 @@ export async function POST(
             squadId: bid.squadId,
             scopeId: bid.scopeId,
           },
-        }))
+        }
       );
     }
 
