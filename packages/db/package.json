@@ -9,7 +9,8 @@
     "migrate": "drizzle-kit migrate",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint configured'"
+    "lint": "echo 'no lint configured'",
+    "migrate:pg": "tsx src/migrate.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.0",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "drizzle-kit": "^0.31.0",
     "typescript": "^5.8.0",
-    "@types/pg": "^8.11.6"
+    "@types/pg": "^8.11.6",
+    "tsx": "^4.21.0"
   }
 }

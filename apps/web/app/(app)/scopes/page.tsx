@@ -14,95 +14,8 @@ interface ScopeItem {
   biddingDeadline: string | null;
   status: string;
   narrative: string | null;
-  _isMock?: boolean;
 }
 
-const MOCK_SCOPES: ScopeItem[] = [
-  {
-    id: 'mock-1',
-    title: 'Build a Regenerative Finance Dashboard',
-    categoryTags: ['web development', 'DeFi', 'data visualization'],
-    budgetMin: '5000',
-    budgetMax: '12000',
-    timelineDays: 30,
-    trustThreshold: 'verified',
-    biddingDeadline: new Date(Date.now() + 5 * 86400000).toISOString(),
-    status: 'open',
-    narrative:
-      'We need a web dashboard that visualizes regenerative finance metrics...',
-    _isMock: true,
-  },
-  {
-    id: 'mock-2',
-    title: 'Community Governance Toolkit Documentation',
-    categoryTags: ['technical writing', 'governance', 'open source'],
-    budgetMin: '2000',
-    budgetMax: '4000',
-    timelineDays: 14,
-    trustThreshold: 'open',
-    biddingDeadline: new Date(Date.now() + 3 * 86400000).toISOString(),
-    status: 'open',
-    narrative:
-      'Write comprehensive documentation for our governance toolkit...',
-    _isMock: true,
-  },
-  {
-    id: 'mock-3',
-    title: 'AI Agent Integration for Supply Chain Tracking',
-    categoryTags: ['AI/ML', 'supply chain', 'smart contracts'],
-    budgetMin: '15000',
-    budgetMax: '25000',
-    timelineDays: 60,
-    trustThreshold: 'trusted',
-    biddingDeadline: new Date(Date.now() + 10 * 86400000).toISOString(),
-    status: 'open',
-    narrative:
-      'Integrate AI agents to track and verify supply chain data...',
-    _isMock: true,
-  },
-  {
-    id: 'mock-4',
-    title: 'Mobile App for Cooperative Membership',
-    categoryTags: ['mobile', 'React Native', 'cooperatives'],
-    budgetMin: '8000',
-    budgetMax: '15000',
-    timelineDays: 45,
-    trustThreshold: 'verified',
-    biddingDeadline: new Date(Date.now() + 7 * 86400000).toISOString(),
-    status: 'open',
-    narrative:
-      'Build a mobile application for managing cooperative memberships...',
-    _isMock: true,
-  },
-  {
-    id: 'mock-5',
-    title: 'Carbon Credit Verification Smart Contract Audit',
-    categoryTags: ['smart contracts', 'security', 'sustainability'],
-    budgetMin: '10000',
-    budgetMax: '18000',
-    timelineDays: 21,
-    trustThreshold: 'elite',
-    biddingDeadline: new Date(Date.now() + 2 * 86400000).toISOString(),
-    status: 'open',
-    narrative:
-      'Perform a security audit of our carbon credit verification contracts...',
-    _isMock: true,
-  },
-  {
-    id: 'mock-6',
-    title: 'Brand Identity for Regenerative Agriculture Platform',
-    categoryTags: ['design', 'branding', 'agriculture'],
-    budgetMin: '3000',
-    budgetMax: '6000',
-    timelineDays: 21,
-    trustThreshold: 'open',
-    biddingDeadline: new Date(Date.now() + 8 * 86400000).toISOString(),
-    status: 'open',
-    narrative:
-      'Design a complete brand identity for our regenerative agriculture platform...',
-    _isMock: true,
-  },
-];
 
 function formatBudget(min: string | null, max: string | null) {
   if (!min && !max) return 'Open budget';
@@ -173,9 +86,8 @@ function ScopeCard({ scope, userSquads }: { scope: ScopeItem; userSquads?: UserS
 
   return (
     <Link
-      href={scope._isMock ? '#' : `/scopes/${scope.id}`}
+      href={`/scopes/${scope.id}`}
       className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow group"
-      onClick={scope._isMock ? (e: React.MouseEvent) => e.preventDefault() : undefined}
     >
       {/* Title */}
       <h2 className="text-base font-semibold text-text-primary line-clamp-2 group-hover:text-accent-squad transition-colors mb-2">
@@ -231,8 +143,8 @@ function ScopeCard({ scope, userSquads }: { scope: ScopeItem; userSquads?: UserS
 
 export default function ScopeBoardPage() {
   const [realScopes, setRealScopes] = useState<ScopeItem[]>([]);
-  const [mockScopes, setMockScopes] = useState<ScopeItem[]>(MOCK_SCOPES);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [recommended, setRecommended] = useState<RecommendedScope[]>([]);
   const [userSquads, setUserSquads] = useState<UserSquadInfo[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -246,11 +158,11 @@ export default function ScopeBoardPage() {
       })
       .then((fetched: ScopeItem[]) => {
         setRealScopes(fetched);
-        const realTitles = new Set(fetched.map((s) => s.title.toLowerCase()));
-        setMockScopes(MOCK_SCOPES.filter((m) => !realTitles.has(m.title.toLowerCase())));
+        setLoadError(false);
       })
       .catch(() => {
-        // On error (e.g. not authenticated), keep mock data as fallback
+        // Surface a real error state instead of showing fabricated listings.
+        setLoadError(true);
       })
       .finally(() => setLoading(false));
 
@@ -285,9 +197,7 @@ export default function ScopeBoardPage() {
       .catch(() => {});
   }, []);
 
-  // Extract all unique tags from both real and mock scopes
-  const allScopes = [...realScopes, ...mockScopes];
-  const allTags = [...new Set(allScopes.flatMap(s => s.categoryTags || []))].sort();
+  const allTags = [...new Set(realScopes.flatMap(s => s.categoryTags || []))].sort();
 
   // Filter scopes based on search query and selected tag
   const filterScope = (scope: ScopeItem) => {
@@ -302,8 +212,7 @@ export default function ScopeBoardPage() {
   };
 
   const filteredRealScopes = realScopes.filter(filterScope);
-  const filteredMockScopes = mockScopes.filter(filterScope);
-  const totalFiltered = filteredRealScopes.length + filteredMockScopes.length;
+  const totalFiltered = filteredRealScopes.length;
   const isFiltering = !!searchQuery || !!selectedTag;
 
   return (
@@ -405,6 +314,16 @@ export default function ScopeBoardPage() {
         <div className="text-center py-12">
           <div className="w-8 h-8 border-2 border-accent-squad border-t-transparent rounded-full animate-spin mx-auto" />
         </div>
+      ) : loadError ? (
+        <div className="text-center py-12 bg-white rounded-2xl border border-border">
+          <p className="text-text-secondary">We couldn&apos;t load the scope board.</p>
+          <button
+            onClick={() => { setLoading(true); setLoadError(false); window.location.reload(); }}
+            className="mt-2 text-sm text-accent-agent hover:text-accent-agent-hover transition-colors"
+          >
+            Try again
+          </button>
+        </div>
       ) : (
         <>
           {/* Real scopes */}
@@ -416,27 +335,23 @@ export default function ScopeBoardPage() {
             </div>
           )}
 
-          {/* Example scopes divider + cards */}
-          {filteredMockScopes.length > 0 && (
-            <>
-              {filteredRealScopes.length > 0 && (
-                <div className="flex items-center gap-3 my-8">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-text-secondary font-medium uppercase tracking-wider">
-                    Example Scopes
-                  </span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {filteredMockScopes.map((scope) => (
-                  <ScopeCard key={scope.id} scope={scope} userSquads={userSquads} />
-                ))}
-              </div>
-            </>
+          {/* Empty state — no scopes posted yet */}
+          {!isFiltering && realScopes.length === 0 && (
+            <div className="text-center py-16 bg-white rounded-2xl border border-border">
+              <h3 className="text-lg font-semibold text-text-primary">No open scopes yet</h3>
+              <p className="text-text-secondary mt-1 max-w-md mx-auto">
+                There are no scopes open for bidding right now. Have work that needs doing?
+              </p>
+              <Link
+                href="/scopes/new"
+                className="inline-block mt-4 py-2.5 px-5 bg-accent-squad text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Submit a Scope
+              </Link>
+            </div>
           )}
 
-          {/* No results message */}
+          {/* No results message when filtering */}
           {isFiltering && totalFiltered === 0 && (
             <div className="text-center py-12">
               <p className="text-text-secondary">No scopes match your search.</p>

@@ -150,7 +150,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Step 7: Filter by skills and calculate match scores
-    let hasSkillFilter = skillSlugs.length > 0;
+    const hasSkillFilter = skillSlugs.length > 0;
 
     type SquadResult = {
       id: string;

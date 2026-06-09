@@ -51,7 +51,7 @@ export async function GET(
     const deliverableKeyParam = url.searchParams.get('deliverableKey');
 
     // Fetch comments with user display names
-    let commentsQuery = db
+    const commentsQuery = db
       .select({
         id: bidComments.id,
         bidId: bidComments.bidId,

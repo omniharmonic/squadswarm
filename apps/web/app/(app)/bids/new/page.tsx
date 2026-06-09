@@ -159,7 +159,7 @@ function BidBuilderContent() {
     // Auto-distribute payment evenly (minus treasury)
     const availableBps = 10000 - treasuryShareBps;
     const perDel = newAssignments.length > 0 ? Math.floor(availableBps / newAssignments.length) : 0;
-    let remainder = availableBps - perDel * newAssignments.length;
+    const remainder = availableBps - perDel * newAssignments.length;
     for (let i = 0; i < newAssignments.length; i++) {
       newAssignments[i]!.paymentShareBps = perDel + (i === 0 ? remainder : 0);
     }
