@@ -6,13 +6,18 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
-    "format": "prettier --write ."
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "test:integration": "vitest run tests/integration"
   },
   "devDependencies": {
+    "@types/pg": "^8.11.6",
+    "@vitest/coverage-v8": "^4.1.8",
+    "pg": "^8.21.0",
     "prettier": "^3.5.0",
     "turbo": "^2.5.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.8"
   },
   "packageManager": "pnpm@10.18.2",
   "engines": {
