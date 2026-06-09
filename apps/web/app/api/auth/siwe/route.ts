@@ -5,6 +5,7 @@ import { recoverMessageAddress, getAddress } from 'viem';
 import { db, users, siweNonces } from '@squadswarm/db';
 import { eq, and, gt } from 'drizzle-orm';
 import { createSession, getSession, setSessionCookie } from '@/lib/auth';
+import { enforceRateLimit } from '@/lib/rate-limit';
 import { randomBytes } from 'crypto';
 
 const NONCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -41,6 +42,9 @@ async function consumeNonce(nonce: string): Promise<boolean> {
  * Body: { message: string, signature: string }
  */
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, 'auth-siwe', { limit: 10, windowMs: 60_000 });
+  if (limited) return limited;
+
   try {
     const { message, signature } = await req.json();
 

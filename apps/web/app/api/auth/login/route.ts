@@ -4,8 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { db, magicLinks } from '@squadswarm/db';
 import { sendMagicLink } from '@/lib/email';
+import { enforceRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  // Throttle magic-link requests to deter email-bombing / enumeration.
+  const limited = enforceRateLimit(req, 'auth-login', { limit: 5, windowMs: 60_000 });
+  if (limited) return limited;
+
   try {
     const { email } = await req.json();
 

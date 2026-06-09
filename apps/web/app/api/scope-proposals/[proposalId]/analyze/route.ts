@@ -7,6 +7,7 @@ import { db, scopeProposals, scopeDocuments } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
 import { analyzeScopeStreaming, extractAnalysisResult, MODELS } from '@squadswarm/ai';
 import { logAiUsage } from '@/lib/ai-usage';
+import { enforceRateLimit } from '@/lib/rate-limit';
 
 /**
  * Stream a Scope Analyst run over SSE. Prompt construction, model selection,
@@ -22,6 +23,10 @@ export async function POST(
 ) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // AI analysis is expensive; cap per-IP to deter abuse/cost-bombing.
+  const limited = enforceRateLimit(req, 'scope-analyze', { limit: 20, windowMs: 60_000 });
+  if (limited) return limited;
 
   const { proposalId } = await params;
 
