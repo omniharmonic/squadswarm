@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { normalizeSkills, filterVagueSkills } from './skill-normalizer';
 import type { NormalizedSkill } from './skill-normalizer';
+import { MODELS } from './models';
 
 function getClient() {
   return new Anthropic();
@@ -18,7 +19,7 @@ export async function extractSkillsFromDeliverable(deliverable: {
   const client = getClient();
 
   const response = await client.messages.create({
-    model: 'claude-3-haiku-20240307',
+    model: MODELS.skillExtract,
     max_tokens: 512,
     system: `You extract specific, industry-standard skills required to complete a deliverable.
 
