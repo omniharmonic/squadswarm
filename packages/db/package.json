@@ -14,10 +14,12 @@
   "dependencies": {
     "@neondatabase/serverless": "^0.10.0",
     "drizzle-orm": "^0.44.0",
-    "@squadswarm/shared": "workspace:*"
+    "@squadswarm/shared": "workspace:*",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "@types/pg": "^8.11.6"
   }
 }

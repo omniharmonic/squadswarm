@@ -24,3 +24,4 @@ export { bidClaims } from './bid-claims';
 export { bidComments } from './bid-comments';
 export { skills } from './skills';
 export { userSkills } from './user-skills';
+export { siweNonces } from './siwe-nonces';

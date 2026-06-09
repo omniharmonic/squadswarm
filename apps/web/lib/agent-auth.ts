@@ -1,9 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest } from 'next/server';
-
-const AGENT_SECRET = new TextEncoder().encode(
-  process.env.AGENT_TOKEN_SECRET || process.env.JWT_SECRET || 'dev-agent-secret'
-);
+import { getAgentSecret } from './env';
 
 export interface AgentSession {
   agentId: string;
@@ -17,7 +14,7 @@ export async function createAgentToken(payload: AgentSession): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('7d')
     .setIssuedAt()
-    .sign(AGENT_SECRET);
+    .sign(getAgentSecret());
 }
 
 export async function getAgentSession(req: NextRequest): Promise<AgentSession | null> {
@@ -27,7 +24,7 @@ export async function getAgentSession(req: NextRequest): Promise<AgentSession | 
   const token = authHeader.slice(7);
 
   try {
-    const { payload } = await jwtVerify(token, AGENT_SECRET);
+    const { payload } = await jwtVerify(token, getAgentSecret());
     if (!payload.agentId || !payload.contractId || !payload.ownerId) return null;
     return {
       agentId: payload.agentId as string,

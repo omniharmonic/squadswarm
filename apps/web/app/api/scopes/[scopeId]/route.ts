@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { db, scopes, bids } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { canViewScope } from '@/lib/access';
 
 export async function GET(
   _req: NextRequest,
@@ -30,6 +31,11 @@ export async function GET(
   }
 
   if (!scope) return NextResponse.json({ error: 'Scope not found' }, { status: 404 });
+
+  // Confidential / NDA scopes are visible only to their client.
+  if (!(await canViewScope(session.userId, scope))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const [bidCount] = await db
     .select({ count: sql<number>`count(*)::int` })

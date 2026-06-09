@@ -27,11 +27,12 @@ export async function POST(req: NextRequest) {
       expiresAt,
     });
 
-    // In development, skip email sending if no API key
+    // In development, skip email sending if no API key. We deliberately do NOT
+    // log the raw token: it is a bearer credential and would leak via logs.
     if (process.env.RESEND_API_KEY) {
       await sendMagicLink(email, token);
-    } else {
-      console.log(`[DEV] Magic link token for ${email}: ${token}`);
+    } else if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[dev] Magic link generated for ${email} (RESEND_API_KEY unset; email not sent).`);
     }
 
     return NextResponse.json({ message: 'Magic link sent' });

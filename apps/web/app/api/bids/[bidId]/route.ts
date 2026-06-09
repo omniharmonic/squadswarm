@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { db, bids, squadMembers } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { getBidViewerRole, redactBidForClient } from '@/lib/access';
 
 export async function GET(
   _req: NextRequest,
@@ -21,6 +22,16 @@ export async function GET(
     .limit(1);
 
   if (!bid) return NextResponse.json({ error: 'Bid not found' }, { status: 404 });
+
+  // Only the bidding squad's members or the scope's client may view a bid.
+  // Until bidding closes, the client sees a redacted view (no competitor
+  // pricing/approach); the bidding squad sees the full bid.
+  const viewerRole = await getBidViewerRole(session.userId, bid);
+  if (!viewerRole) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  if (viewerRole === 'scope_client' && bid.status !== 'accepted') {
+    return NextResponse.json(redactBidForClient(bid));
+  }
 
   return NextResponse.json(bid);
 }
