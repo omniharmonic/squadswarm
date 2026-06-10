@@ -10,9 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # pnpm version is taken from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -44,8 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -56,7 +53,7 @@ jobs:
       - name: Start app
         run: |
           pnpm --filter web dev &
-          npx wait-on http://localhost:3000/api/health --timeout 60000
+          npx --yes wait-on http://localhost:3000/api/health --timeout 120000
       - name: Run integration tests
         run: pnpm test:integration
 
@@ -68,8 +65,11 @@ jobs:
         working-directory: contracts
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
+      # Dependencies are not vendored/submoduled in this repo, so install them.
+      - name: Install contract dependencies
+        run: |
+          forge install foundry-rs/forge-std
+          forge install OpenZeppelin/openzeppelin-contracts@v5.1.0
       - run: forge build
       - run: forge test -vvv
