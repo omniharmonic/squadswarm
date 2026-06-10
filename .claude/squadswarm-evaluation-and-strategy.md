@@ -7,6 +7,53 @@
 
 ---
 
+## Execution status (updated 2026-06-10)
+
+This document began as an evaluation; the P0/P1 and several P2 items have since
+been **implemented, tested, and pushed** to `claude/elegant-franklin-uxosti`.
+
+**Done & verified**
+- ✅ **P0 IDOR**: shared authz (`lib/access.ts`); closed bid / squad-roster /
+  payment-distribution / confidential-scope leaks. Encoded as a live
+  integration suite (6 tests) — non-members now get `403`, owners `200`.
+- ✅ **P0 auth**: fail-fast secret loader (`lib/env.ts`, no insecure fallback);
+  SIWE server-side single-use nonces (`siwe_nonces` table) — replay rejected
+  live; removed magic-link token logging.
+- ✅ **P0 migration**: folded the orphaned skills migration into a journaled,
+  idempotent `0005`; added a node-postgres migration runner; verified a clean
+  DB builds all 27 tables.
+- ✅ **P1 AI**: consolidated the duplicated Scope Analyst into `@squadswarm/ai`
+  (route is now a thin SSE layer); central model registry (upgraded off
+  haiku-3 → sonnet-4.6, Opus via env); prompt-injection delimiting; real
+  streaming; Zod validation; `ai_usage_logs` now written.
+- ✅ **P1 rate limiting**: auth + analyze endpoints (verified 429 live).
+- ✅ **P1 testing/CI**: Vitest (18 unit + 6 integration); a real ESLint flat
+  config replacing the broken `next lint` (0 errors); CI expanded to
+  quality + integration (Postgres service) + Foundry jobs.
+- ✅ **P1 cleanup**: removed shipped mock scope data; gitignored/untracked build
+  artifacts; added a logger.
+- ✅ **P2 (partial)**: security headers (verified live); removed dead
+  `trust-pagerank.ts`.
+
+**Deliberately not done in this environment (with reasons)**
+- ⏸ **Smart-contract hardening (P2 #11)**: Foundry can't be installed here (no
+  network to the installer; OZ not vendored), so changes to escrow/payment
+  Solidity can't be compiled or tested. Pushing unverified money-handling code
+  is the exact risk to avoid — left as the specified follow-up in §8.
+- ⏸ **workspace/board consolidation (P2 #10)**: genuine product/UX decision (two
+  distinct entry points); folding 700–900-line files blind risks breaking
+  navigation. Needs a product call on which entry point to keep.
+- ⏸ **Large-file refactors (P2 #10)**: deferred — high risk to verify without
+  full click-through QA.
+- ℹ️ **Production build**: not verifiable in this sandbox — `next/font/google`
+  fetches DM Sans / JetBrains Mono at build time and the network is restricted
+  here (succeeds on Vercel/GitHub Actions). Worth self-hosting fonts
+  (`next/font/local`) so builds don't depend on external network.
+
+Everything below is the original evaluation.
+
+---
+
 ## 0. How this evaluation was performed (methodology)
 
 This is not a read-only skim. I stood the system up and exercised it:
