@@ -44,3 +44,7 @@ coverage
 contracts/lib/
 .playwright-mcp/
 *.png
+
+# Build artifacts
+*.tsbuildinfo
+.next/

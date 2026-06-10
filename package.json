@@ -4,15 +4,26 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "lint": "turbo lint",
+    "lint": "eslint .",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
-    "format": "prettier --write ."
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "test:integration": "vitest run tests/integration"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.2.9",
+    "@types/pg": "^8.11.6",
+    "@vitest/coverage-v8": "^4.1.8",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "pg": "^8.21.0",
     "prettier": "^3.5.0",
+    "tsx": "^4.22.4",
     "turbo": "^2.5.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.61.0",
+    "vitest": "^4.1.8"
   },
   "packageManager": "pnpm@10.18.2",
   "engines": {
@@ -22,6 +33,9 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp"
-    ]
+    ],
+    "overrides": {
+      "@types/pg": "8.11.6"
+    }
   }
 }

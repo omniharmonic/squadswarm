@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
-import { db, squads, squadMembers, users } from '@squadswarm/db';
+import { db, squadMembers, users } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { getSquadRole } from '@/lib/access';
 
 export async function GET(
   _req: NextRequest,
@@ -14,7 +15,11 @@ export async function GET(
 
   const { squadId } = await params;
 
-  const members = await db
+  // Only squad members can view the roster.
+  const role = await getSquadRole(session.userId, squadId);
+  if (!role) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const rows = await db
     .select({
       id: squadMembers.id,
       userId: squadMembers.userId,
@@ -28,6 +33,9 @@ export async function GET(
     .from(squadMembers)
     .innerJoin(users, eq(users.id, squadMembers.userId))
     .where(eq(squadMembers.squadId, squadId));
+
+  // Member email addresses are PII — only admins see them.
+  const members = rows.map((m) => (role === 'admin' ? m : { ...m, userEmail: null }));
 
   return NextResponse.json(members);
 }

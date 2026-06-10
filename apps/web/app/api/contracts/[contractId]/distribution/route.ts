@@ -1,9 +1,8 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { db, contracts } from '@squadswarm/db';
 import { getSession } from '@/lib/auth';
+import { getContractRole } from '@/lib/contract-access';
 import { getDistributionStatus } from '@/lib/payment-distribution';
 
 export async function GET(
@@ -15,14 +14,11 @@ export async function GET(
 
   const { contractId } = await params;
 
-  // Verify contract exists
-  const [contract] = await db
-    .select()
-    .from(contracts)
-    .where(eq(contracts.id, contractId))
-    .limit(1);
-
+  // Payment splits + wallet addresses are sensitive: only the client and squad
+  // members of this contract may see them.
+  const { role, contract } = await getContractRole(contractId, session.userId);
   if (!contract) return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
+  if (!role) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   try {
     const status = await getDistributionStatus(contractId);

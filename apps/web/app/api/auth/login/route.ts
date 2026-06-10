@@ -4,8 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { db, magicLinks } from '@squadswarm/db';
 import { sendMagicLink } from '@/lib/email';
+import { enforceRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  // Throttle magic-link requests to deter email-bombing / enumeration.
+  const limited = enforceRateLimit(req, 'auth-login', { limit: 5, windowMs: 60_000 });
+  if (limited) return limited;
+
   try {
     const { email } = await req.json();
 
@@ -27,11 +32,12 @@ export async function POST(req: NextRequest) {
       expiresAt,
     });
 
-    // In development, skip email sending if no API key
+    // In development, skip email sending if no API key. We deliberately do NOT
+    // log the raw token: it is a bearer credential and would leak via logs.
     if (process.env.RESEND_API_KEY) {
       await sendMagicLink(email, token);
-    } else {
-      console.log(`[DEV] Magic link token for ${email}: ${token}`);
+    } else if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[dev] Magic link generated for ${email} (RESEND_API_KEY unset; email not sent).`);
     }
 
     return NextResponse.json({ message: 'Magic link sent' });

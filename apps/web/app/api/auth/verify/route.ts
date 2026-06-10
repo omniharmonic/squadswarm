@@ -4,8 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, gt } from 'drizzle-orm';
 import { db, magicLinks, users } from '@squadswarm/db';
 import { createSession, setSessionCookie } from '@/lib/auth';
+import { enforceRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  // Throttle token guessing.
+  const limited = enforceRateLimit(req, 'auth-verify', { limit: 10, windowMs: 60_000 });
+  if (limited) return limited;
+
   try {
     const { token } = await req.json();
 
